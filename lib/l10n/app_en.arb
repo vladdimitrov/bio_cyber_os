@@ -1,0 +1,359 @@
+{
+  "@@locale": "en",
+  "appTitle": "BIO_CYBER OS",
+  "navFuel": "FUEL",
+  "navSupps": "SUPPS",
+  "navMeds": "MEDS",
+  "navVitals": "VITALS",
+  "navReports": "REPORTS",
+  "navLibrary": "LIBRARY",
+  "navConfig": "CONFIG",
+  "screenFuelLog": "FUEL LOG",
+  "screenSupps": "SUPPS",
+  "screenMeds": "MEDS",
+  "screenVitalsSymptoms": "VITALS & SYMPTOMS",
+  "screenReports": "REPORTS",
+  "screenLibrary": "LIBRARY",
+  "screenConfig": "CONFIG",
+  "addFood": "ADD FOOD",
+  "save": "SAVE",
+  "saveData": "SAVE DATA",
+  "saveConfig": "SAVE CONFIG",
+  "cancel": "CANCEL",
+  "logIn": "LOG IN",
+  "signUp": "SIGN UP",
+  "logOut": "Log out",
+  "refresh": "Refresh",
+  "languageSectionTitle": "LANGUAGE",
+  "languageLabel": "Language",
+  "languageSystem": "System default",
+  "languageEnglish": "English",
+  "languageBulgarian": "Bulgarian",
+  "mealBreakfast": "BREAKFAST",
+  "mealLunch": "LUNCH",
+  "mealDinner": "DINNER",
+  "mealExtraSnack": "EXTRA / SNACK",
+  "mealExtraUnsorted": "EXTRA",
+  "blockMorning": "MORNING",
+  "blockAfternoon": "AFTERNOON",
+  "blockEvening": "EVENING",
+  "blockNight": "NIGHT",
+  "nutritionDailyProgress": "DAILY NUTRITION PROGRESS",
+  "nutritionChartLegend": "■ solid = consumed  ·  ░ dashed = planned extra  ·  │ goal = daily target",
+  "nutritionProtein": "PROTEIN",
+  "nutritionCarbs": "CARBS",
+  "nutritionFats": "FATS",
+  "nutritionCal": "CAL",
+  "nutritionEatenShort": "eaten",
+  "nutritionWithPlanShort": "w/ plan",
+  "nutritionTargetShort": "target",
+  "labelEaten": "Eaten",
+  "labelPlanned": "Planned",
+  "labelGoal": "Goal",
+  "labelCurrent": "current",
+  "labelPlannedLower": "planned",
+  "dailyRecords": "DAILY RECORDS",
+  "actionAddPlan": "PLAN",
+  "actionAddExtra": "+ ADD EXTRA / SNACK",
+  "take": "TAKE",
+  "edit": "Edit",
+  "delete": "Delete",
+  "printExport": "PRINT / EXPORT",
+  "printDailyPlanTitle": "Print Daily Plan (selected date)",
+  "exportWeeklySummaryTitle": "Export Weekly Summary (PDF)",
+  "selectDateRange": "Select date range",
+  "prevDay": "Previous day",
+  "nextDay": "Next day",
+  "close": "Close",
+  "ok": "OK",
+  "logVerb": "LOG",
+  "unit": "Unit",
+  "notes": "Notes",
+  "number": "Number",
+  "requiredField": "Required",
+  "searchHint": "Search…",
+  "noItemsFound": "No items found",
+  "unknown": "Unknown",
+  "missed": "MISSED",
+  "plannedUpper": "PLANNED",
+  "consumedUpper": "CONSUMED",
+  "subtotal": "SUBTOTAL",
+  "fuelMacrosLine": "P: {p}g | C: {c}g | F: {f}g | {cal} kcal",
+  "@fuelMacrosLine": {
+    "placeholders": {
+      "p": {"type": "String"},
+      "c": {"type": "String"},
+      "f": {"type": "String"},
+      "cal": {"type": "String"}
+    }
+  },
+  "reminder": "REMINDER",
+  "none": "None",
+  "specific": "Specific",
+  "minutesBefore": "Minutes before",
+  "specificTime": "Specific time",
+  "minutes": "Minutes",
+  "pickTime": "Pick time",
+  "recipe": "Recipe",
+  "ingredient": "Ingredient",
+  "planTag": "[PLAN]",
+  "gramsSuffix": "g",
+  "fuelNoMealsToday": "No meals logged for today yet. Use “+ ADD BREAKFAST/LUNCH/DINNER” (or PLAN) to log food — your history will appear here.",
+  "fuelNoMealsForDay": "No meals logged for {date}. RLS shows only your own entries; use the add buttons below when you are ready to log this day.",
+  "@fuelNoMealsForDay": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "fuelNoItemsBlock": "No items for this block yet.\nTap “+ ADD …” or “PLAN” above.",
+  "macroSummaryLine": "P {p}g  C {c}g  F {f}g  {cal} kcal",
+  "@macroSummaryLine": {
+    "placeholders": {
+      "p": {"type": "String"},
+      "c": {"type": "String"},
+      "f": {"type": "String"},
+      "cal": {"type": "String"}
+    }
+  },
+  "macroCompareLine": "current {current}  |  planned {planned}",
+  "@macroCompareLine": {
+    "placeholders": {
+      "current": {"type": "String"},
+      "planned": {"type": "String"}
+    }
+  },
+  "supsEmptyToday": "No supplements logged for today.\nUse “+ ADD MORNING/AFTERNOON/EVENING/NIGHT SUPP” to plan.\n\nOnly your own logs appear here (per-account data).",
+  "supsEmptyForDay": "No supplements logged for {date}.\nUse the section “+ ADD … SUPP” buttons to plan.\n\nOnly your own logs appear here (per-account data).",
+  "@supsEmptyForDay": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "medsEmptyToday": "No medications planned for today.\nUse “+ ADD MORNING/AFTERNOON/EVENING/NIGHT MED” to plan.\n\nOnly your own logs appear here (per-account data).",
+  "medsEmptyForDay": "No medications planned for {date}.\nUse the section “+ ADD … MED” buttons to plan.\n\nOnly your own logs appear here (per-account data).",
+  "@medsEmptyForDay": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "supsAddBlockSupp": "+ ADD {block} SUPP",
+  "@supsAddBlockSupp": {
+    "placeholders": {
+      "block": {"type": "String"}
+    }
+  },
+  "medsAddBlockMed": "+ ADD {block} MED",
+  "@medsAddBlockMed": {
+    "placeholders": {
+      "block": {"type": "String"}
+    }
+  },
+  "settingsMeasurementSection": "MEASUREMENT SYSTEM",
+  "settingsMeasurementSystem": "Measurement System",
+  "settingsMetric": "Metric (g, ml, kg)",
+  "settingsImperial": "Imperial (oz, fl oz, lbs)",
+  "settingsNotificationsTitle": "Enable Notifications / Reminders",
+  "settingsNotificationsSubtitle": "When enabled, the app can schedule intake reminders.",
+  "settingsNotificationsDenied": "Notifications permission is required. Please enable it in OS/Browser settings.",
+  "settingsUserProfileSection": "USER PROFILE / METRICS",
+  "settingsHeightCmOptional": "Height (cm), optional",
+  "settingsHeightInOptional": "Height (in), optional",
+  "settingsWeightKgOptional": "Weight (kg), optional",
+  "settingsWeightLbsOptional": "Weight (lbs), optional",
+  "settingsAgeOptional": "Age, optional",
+  "settingsBmiHeading": "BMI (Body Mass Index)",
+  "settingsUserTargetsSection": "USER TARGETS",
+  "settingsProteinG": "Protein (g)",
+  "settingsCarbsG": "Carbs (g)",
+  "settingsFatsG": "Fats (g)",
+  "settingsCalories": "Calories",
+  "bmiEnterImperial": "Enter height (in) and weight (lbs) to compute BMI.",
+  "bmiEnterMetric": "Enter height (cm) and weight (kg) to compute BMI.",
+  "bmiEnterValid": "Enter valid height and weight.",
+  "bmiUnderweight": "Underweight (under 18.5)",
+  "bmiNormal": "Normal weight (18.5–24.9)",
+  "bmiOverweight": "Overweight (25–29.9)",
+  "bmiObese": "Obese (30 or higher)",
+  "bmiDash": "—",
+  "msgSignInDeleteLogs": "You must be signed in to delete logs.",
+  "msgSignInUpdateLogs": "You must be signed in to update logs.",
+  "msgSignInLogFood": "You must be signed in to log food.",
+  "msgSignInLogSupps": "You must be signed in to log supplements.",
+  "msgSignInLogMeds": "You must be signed in to log medications.",
+  "msgSignInSave": "You must be signed in to save.",
+  "msgSignInAddMeds": "You must be signed in to add medications.",
+  "msgSignInReports": "Sign in to view reports (RLS + user_id).",
+  "msgPlannedMealRemoved": "Planned meal removed",
+  "msgEntryUpdated": "Entry updated",
+  "msgEmptyRecordId": "Error: empty record id",
+  "msgMealMarkedConsumed": "Meal marked as consumed!",
+  "msgValidAmountGrams": "Enter a valid amount in grams",
+  "msgValidAmount": "Enter a valid amount",
+  "msgValidDose": "Enter a valid dose",
+  "msgLogged": "Logged.",
+  "msgLogDeleted": "Log deleted.",
+  "msgLogUpdated": "Log updated!",
+  "msgConfigSaved": "CONFIG SAVED",
+  "msgPlannedForMeal": "PLANNED → {meal}",
+  "@msgPlannedForMeal": {
+    "placeholders": {
+      "meal": {"type": "String"}
+    }
+  },
+  "logsError": "Logs error: {details}",
+  "@logsError": {
+    "placeholders": {
+      "details": {"type": "String"}
+    }
+  },
+  "libraryError": "Library error: {details}",
+  "@libraryError": {
+    "placeholders": {
+      "details": {"type": "String"}
+    }
+  },
+  "pdfError": "PDF error: {details}",
+  "@pdfError": {
+    "placeholders": {
+      "details": {"type": "String"}
+    }
+  },
+  "analyticsNoDaysInRange": "No days in range — adjust the date range.",
+  "analyticsConsumedCaloriesTitle": "CONSUMED FOOD — Calories by day",
+  "analyticsNoConsumedFood": "No consumed food in range — chart baseline is 0.",
+  "analyticsGlycemicTitle": "CONSUMED FOOD — Estimated glycemic load (GI × carbs where known)",
+  "analyticsNoGiData": "No GI data / no carbs in logged items — chart baseline is 0.",
+  "analyticsSourceDailyLogs": "Source: daily_logs · filtered by created_at (UTC day range, same as FUEL screen).",
+  "analyticsNoDataForRange": "No data for range.",
+  "analyticsSuppAdherenceTitle": "SUPPLEMENT ADHERENCE (taken vs missed)",
+  "analyticsMedAdherenceTitle": "MEDICATION ADHERENCE (taken vs missed)",
+  "analyticsSourceDailyLogsShort": "Source: daily_logs · created_at (UTC day range).",
+  "analyticsSourceMedLogs": "Source: medication_logs · created_at (UTC day range). Rows include medication_id → medications(name) for labels in exports.",
+  "analyticsMissedExplainer": "Missed = scheduled, not taken, and past the grace window (today: +60 min) or any prior day.",
+  "analyticsLegendTaken": "Taken",
+  "analyticsLegendMissed": "Missed",
+  "analyticsRangeButton": "Range: {start} → {end}",
+  "@analyticsRangeButton": {
+    "placeholders": {
+      "start": {"type": "String"},
+      "end": {"type": "String"}
+    }
+  },
+  "analyticsDailyPlanPdfDate": "Daily plan PDF date: {date}",
+  "@analyticsDailyPlanPdfDate": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "analyticsDailyPlanSubtitle": "{date} — tap “Daily plan date” above to change",
+  "@analyticsDailyPlanSubtitle": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "analyticsWeeklySubtitle": "Uses the current date range ({start} → {end}).",
+  "@analyticsWeeklySubtitle": {
+    "placeholders": {
+      "start": {"type": "String"},
+      "end": {"type": "String"}
+    }
+  },
+  "addSupplementToLibrary": "Add supplement to library",
+  "addMedicationToLibrary": "Add medication to library",
+  "editLog": "Edit log",
+  "deleteLog": "Delete log",
+  "fuelLogIntakeTitle": "LOG INTAKE",
+  "fuelIntakeTime": "INTAKE TIME",
+  "fuelIntakeTimeDash": "INTAKE TIME  —",
+  "timeAt": "TIME  {time}",
+  "@timeAt": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "intakeTimeAt": "INTAKE TIME  {time}",
+  "@intakeTimeAt": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "amountTaken": "Amount Taken",
+  "numberOfConsecutiveDays": "Number of consecutive days",
+  "saveAsDefaultDoseLibrary": "Save as default dose in Library",
+  "addSupplementTitle": "ADD SUPPLEMENT",
+  "amountLabelShort": "Amount",
+  "fuelScheduleMultiDays": "Schedule for multiple days",
+  "fuelRepeatDaysLabel": "Enter number of days",
+  "fuelEditEntryTitle": "EDIT ENTRY",
+  "fuelAmountGrams": "AMOUNT (GRAMS)",
+  "fuelConsumptionTime": "CONSUMPTION TIME",
+  "fuelConsumptionTimeAt": "CONSUMPTION TIME  {time}",
+  "@fuelConsumptionTimeAt": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "fuelPlanningSaved": "PLANNING — saved as not consumed yet",
+  "reminderTitleMeal": "Meal time: {name}.",
+  "@reminderTitleMeal": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "reminderAtTime": "Reminder: {time}",
+  "@reminderAtTime": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "reminderBody": "Reminder",
+  "reminderTimeToTake": "Time to take your {name}!",
+  "@reminderTimeToTake": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "supsLogIntakeTitle": "LOG SUPPLEMENT INTAKE",
+  "medsLogIntakeTitle": "LOG MEDICATION INTAKE",
+  "supsEditLogTitle": "EDIT SUPPLEMENT LOG",
+  "medsEditLogTitle": "EDIT MEDICATION LOG",
+  "supsNewSupplementTitle": "NEW SUPPLEMENT",
+  "medsNewMedicationTitle": "ADD MEDICATION",
+  "medsMedicationName": "Name",
+  "logSupplementBlock": "LOG SUPPLEMENT — {block}",
+  "@logSupplementBlock": {
+    "placeholders": {
+      "block": {"type": "String"}
+    }
+  },
+  "logMedicationBlock": "LOG MEDICATION — {block}",
+  "@logMedicationBlock": {
+    "placeholders": {
+      "block": {"type": "String"}
+    }
+  },
+  "defaultSupplementName": "Supplement",
+  "defaultMedicationName": "Medication",
+  "notificationReminderSuppIntake": "Reminder: {name} intake.",
+  "@notificationReminderSuppIntake": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "notificationReminderMedIntake": "Reminder: {name} intake.",
+  "@notificationReminderMedIntake": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "libraryAddNew": "+ Add New to Library",
+  "libraryDefaultDose": "Default {dose} {unit} (tap to edit at log time)",
+  "@libraryDefaultDose": {
+    "placeholders": {
+      "dose": {"type": "String"},
+      "unit": {"type": "String"}
+    }
+  },
+  "libraryNoDefaultDose": "No default dose (tap to enter now)",
+  "dialogSaving": "…"
+}
