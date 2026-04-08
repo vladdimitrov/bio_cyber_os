@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -101,6 +102,12 @@ class NotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) {
       granted = await android.requestNotificationsPermission();
+      // Best-effort: request exact-alarm permission on Android 12+ if needed.
+      // If API isn't available or permission can't be requested, we will fall back
+      // to inexact scheduling when the user tries to schedule reminders.
+      try {
+        await android.requestExactAlarmsPermission();
+      } catch (_) {}
     }
 
     final ios = _plugin.resolvePlatformSpecificImplementation<
@@ -215,16 +222,47 @@ class NotificationService {
     );
 
     final when = tz.TZDateTime.from(whenLocal, tz.local);
-    await _plugin.zonedSchedule(
-      hashId(key),
-      title,
-      body,
-      when,
-      details,
-      payload: payload == null ? null : jsonEncode(payload),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: null,
-    );
+    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
+    Future<void> trySchedule(AndroidScheduleMode mode) async {
+      await _plugin.zonedSchedule(
+        hashId(key),
+        title,
+        body,
+        when,
+        details,
+        payload: payload == null ? null : jsonEncode(payload),
+        androidScheduleMode: mode,
+        matchDateTimeComponents: null,
+      );
+    }
+
+    try {
+      // Prefer exact alarms when possible.
+      final canExact = await androidImpl?.canScheduleExactNotifications() ?? true;
+      final mode = canExact
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle;
+      await trySchedule(mode);
+    } on PlatformException catch (e) {
+      // Android 12+/14: exact alarms may be blocked -> fall back inexact.
+      // ignore: avoid_print
+      print('DEBUG: Notification schedule PlatformException: ${e.code} ${e.message}');
+      try {
+        await trySchedule(AndroidScheduleMode.inexactAllowWhileIdle);
+      } catch (e2) {
+        // Don't crash the app because scheduling failed.
+        // ignore: avoid_print
+        print('DEBUG: Notification schedule failed after fallback: $e2');
+        return;
+      }
+    } catch (e) {
+      // Don't crash the app because scheduling failed.
+      // ignore: avoid_print
+      print('DEBUG: Notification schedule failed: $e');
+      return;
+    }
 
     // DEBUG LOGGING
     // ignore: avoid_print

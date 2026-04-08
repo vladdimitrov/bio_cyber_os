@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
+import '../../../core/debug/agent_debug_log.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/settings/locale_settings.dart';
 import '../../../core/settings/measurement_settings.dart';
@@ -50,6 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   MeasurementSystem _measurementSystem = MeasurementSystem.metric;
   bool _notificationsEnabled = false;
+  AppLanguagePreference _selectedLanguage = AppLanguagePreference.system;
   bool _updatingDisplay = false;
 
   void _onProfileFieldsChanged() {
@@ -59,7 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _profileRemoteDebounce?.cancel();
     _profileRemoteDebounce = Timer(const Duration(milliseconds: 600), () {
       if (!mounted) return;
-      unawaited(_persistProfileRemote());
+      unawaited(_persistProfileRemote(debug: true));
     });
   }
 
@@ -92,7 +94,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveProfileLocal() async {
     if (_updatingDisplay) return;
     try {
+      // ignore: avoid_print
+      print('DEBUG: Attempting to save Height: ${_heightCmController.text}');
+      // ignore: avoid_print
+      print('DEBUG: Attempting to save Weight: ${_weightKgController.text}');
+      // ignore: avoid_print
+      print('DEBUG: Attempting to save Age: ${_ageController.text}');
+
       final p = await SharedPreferences.getInstance();
+      // As requested (even if this app uses different pref keys).
+      // ignore: avoid_print
+      print("DEBUG: SharedPreferences status: ${p.containsKey('user_height')}");
+      // ignore: avoid_print
+      print(
+        "DEBUG: SharedPreferences status (profile_height_cm): ${p.containsKey(_kPrefHeightCm)}",
+      );
+      // ignore: avoid_print
+      print(
+        "DEBUG: SharedPreferences status (profile_weight_kg): ${p.containsKey(_kPrefWeightKg)}",
+      );
+      // ignore: avoid_print
+      print(
+        "DEBUG: SharedPreferences status (profile_age): ${p.containsKey(_kPrefAge)}",
+      );
+
       final hRaw = _heightCmController.text.trim();
       final wRaw = _weightKgController.text.trim();
 
@@ -115,6 +140,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await p.setString(_kPrefHeightCm, hCm?.toString() ?? '');
       await p.setString(_kPrefWeightKg, wKg?.toString() ?? '');
       await p.setString(_kPrefAge, _ageController.text.trim());
+
+      // ignore: avoid_print
+      print(
+        'DEBUG: Local prefs after save -> '
+        '$_kPrefHeightCm=${p.getString(_kPrefHeightCm)} | '
+        '$_kPrefWeightKg=${p.getString(_kPrefWeightKg)} | '
+        '$_kPrefAge=${p.getString(_kPrefAge)}',
+      );
+
+      // #region agent log
+      AgentDebugLog.log(
+        runId: 'pre-fix',
+        hypothesisId: 'H1',
+        location: 'lib/features/config/screens/settings_screen.dart:_saveProfileLocal',
+        message: 'Profile saved to SharedPreferences',
+        data: {
+          'has_height_key': p.containsKey(_kPrefHeightCm),
+          'has_weight_key': p.containsKey(_kPrefWeightKg),
+          'has_age_key': p.containsKey(_kPrefAge),
+          'height_raw': _heightCmController.text.trim(),
+          'weight_raw': _weightKgController.text.trim(),
+          'age_raw': _ageController.text.trim(),
+          'height_pref': p.getString(_kPrefHeightCm),
+          'weight_pref': p.getString(_kPrefWeightKg),
+          'age_pref': p.getString(_kPrefAge),
+        },
+      );
+      // #endregion
     } catch (_) {}
   }
 
@@ -186,6 +239,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _measurementSystem = MeasurementSettings.system.value;
     _notificationsEnabled = NotificationSettings.enabled.value;
+    _selectedLanguage = LocaleSettings.preference;
     MeasurementSettings.system.addListener(_onMeasurementChanged);
     NotificationSettings.enabled.addListener(_onNotificationsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapScreen());
@@ -193,8 +247,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _bootstrapScreen() async {
     setState(() => _loading = true);
+    // ignore: avoid_print
+    print('DEBUG: Settings bootstrap - loading from SharedPreferences...');
     await _loadProfileFromPrefs();
     final uid = _client.auth.currentUser?.id;
+    // ignore: avoid_print
+    print('DEBUG: Settings bootstrap - user_id: $uid');
     await Future.wait([
       if (uid != null) _hydrateProfileFromSupabase(),
       _loadTargetsForUser(uid),
@@ -210,40 +268,98 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final row = await _client
           .from('profiles')
-          .select('height_cm, weight_kg, age')
+          .select('height_cm, weight_kg, age, selected_language, notifications_enabled')
           .eq('id', uid)
           .maybeSingle();
       if (!mounted || row == null) return;
+      // ignore: avoid_print
+      print('DEBUG: Settings hydrate - Supabase profile row: $row');
 
       final h = row['height_cm'];
       final w = row['weight_kg'];
       final a = row['age'];
+      final lang = (row['selected_language'] ?? '').toString().trim().toLowerCase();
+      final notifRaw = row['notifications_enabled'];
+      final notif = notifRaw is bool
+          ? notifRaw
+          : (notifRaw is num
+              ? notifRaw != 0
+              : (notifRaw?.toString().toLowerCase() == 'true'));
       final hCm = h is num ? h.toDouble() : double.tryParse('$h');
       final wKg = w is num ? w.toDouble() : double.tryParse('$w');
       final ageStr = a == null ? '' : '$a'.trim();
 
       _hydratingProfile = true;
       _updatingDisplay = true;
-      _heightCmController.text =
-          (_measurementSystem == MeasurementSystem.imperial && hCm != null)
-              ? UnitConverter.cmToInches(hCm).toStringAsFixed(0)
-              : (hCm != null ? hCm.toStringAsFixed(0) : '');
-      _weightKgController.text =
-          (_measurementSystem == MeasurementSystem.imperial && wKg != null)
-              ? UnitConverter.kgToLbs(wKg).toStringAsFixed(1)
-              : (wKg != null ? wKg.toStringAsFixed(1) : '');
-      _ageController.text = ageStr;
+      // Local fallback: do not wipe local fields if Supabase returns nulls.
+      if (hCm != null) {
+        _heightCmController.text =
+            (_measurementSystem == MeasurementSystem.imperial)
+                ? UnitConverter.cmToInches(hCm).toStringAsFixed(0)
+                : hCm.toStringAsFixed(0);
+      }
+      if (wKg != null) {
+        _weightKgController.text =
+            (_measurementSystem == MeasurementSystem.imperial)
+                ? UnitConverter.kgToLbs(wKg).toStringAsFixed(1)
+                : wKg.toStringAsFixed(1);
+      }
+      if (a != null) {
+        _ageController.text = ageStr;
+      }
       _updatingDisplay = false;
       _hydratingProfile = false;
 
-      await _saveProfileLocal();
+      // Only update local cache from Supabase if we actually received values.
+      if (hCm != null || wKg != null || a != null) {
+        await _saveProfileLocal();
+      }
+
+      // Apply language + notifications from Supabase to app state/prefs.
+      if (lang == 'en') {
+        await LocaleSettings.setPreference(AppLanguagePreference.english);
+      } else if (lang == 'bg') {
+        await LocaleSettings.setPreference(AppLanguagePreference.bulgarian);
+      } else {
+        await LocaleSettings.setPreference(AppLanguagePreference.system);
+      }
+      await NotificationSettings.setEnabled(notif);
+
+      if (mounted) {
+        setState(() {
+          _selectedLanguage = LocaleSettings.preference;
+          _notificationsEnabled = NotificationSettings.enabled.value;
+        });
+      }
+      // ignore: avoid_print
+      print('DEBUG: Local Language saved: $lang');
+      // ignore: avoid_print
+      print('DEBUG: Notifications Switch state: $notif');
+
       if (mounted) setState(() {});
     } catch (_) {}
   }
 
-  Future<void> _persistProfileRemote() async {
+  Future<bool> _persistProfileRemote({required bool debug}) async {
     final uid = _client.auth.currentUser?.id;
-    if (uid == null) return;
+    if (uid == null) {
+      if (debug) {
+        // ignore: avoid_print
+        print('DEBUG: Supabase update aborted: user_id is null (logged out?)');
+      }
+      // #region agent log
+      AgentDebugLog.log(
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        location:
+            'lib/features/config/screens/settings_screen.dart:_persistProfileRemote',
+        message: 'Supabase profile upsert aborted: uid null',
+      );
+      // #endregion
+      return false;
+    }
+    // ignore: avoid_print
+    print('DEBUG: Saving profile for User ID: $uid');
 
     double? parseNum(String v) {
       final t = v.trim().replaceAll(',', '.');
@@ -253,6 +369,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final hRaw = _heightCmController.text.trim();
     final wRaw = _weightKgController.text.trim();
+    if (debug) {
+      // ignore: avoid_print
+      print('DEBUG: Attempting to save Height: $hRaw');
+      // ignore: avoid_print
+      print('DEBUG: Attempting to save Weight: $wRaw');
+      // ignore: avoid_print
+      print('DEBUG: Attempting to save Age: ${_ageController.text}');
+      // ignore: avoid_print
+      print('DEBUG: Supabase user_id: $uid');
+    }
     final hDisplay = parseNum(hRaw);
     final wDisplay = parseNum(wRaw);
     final hCm = (_measurementSystem == MeasurementSystem.imperial &&
@@ -266,16 +392,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ageTrim = _ageController.text.trim();
     final ageInt = int.tryParse(ageTrim);
 
+    final lang = () {
+      switch (_selectedLanguage) {
+        case AppLanguagePreference.system:
+          return '';
+        case AppLanguagePreference.english:
+          return 'en';
+        case AppLanguagePreference.bulgarian:
+          return 'bg';
+      }
+    }();
+    final isEnabled = _notificationsEnabled;
+    // ignore: avoid_print
+    print('DEBUG: Local Language saved: $lang');
+    // ignore: avoid_print
+    print('DEBUG: Notifications Switch state: $isEnabled');
+
     final payload = <String, dynamic>{
       'id': uid,
       'height_cm': hCm,
       'weight_kg': wKg,
       'age': ageTrim.isEmpty ? null : ageInt,
+      'selected_language': lang,
+      'notifications_enabled': isEnabled,
     };
 
     try {
+      if (debug) {
+        // ignore: avoid_print
+        print('DEBUG: Supabase update payload: $payload');
+      }
+      // #region agent log
+      AgentDebugLog.log(
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        location:
+            'lib/features/config/screens/settings_screen.dart:_persistProfileRemote',
+        message: 'Attempting Supabase profile upsert',
+        data: {
+          'uid_present': true,
+          'payload_keys': payload.keys.toList(),
+          'height_cm': hCm,
+          'weight_kg': wKg,
+          'age': payload['age'],
+        },
+      );
+      // #endregion
       await _client.from('profiles').upsert(payload, onConflict: 'id');
-    } catch (_) {}
+      if (debug) {
+        // ignore: avoid_print
+        print('DEBUG: Supabase profile upsert OK');
+      }
+
+      // Verify immediately by reading back the row.
+      final verify = await _client
+          .from('profiles')
+          .select(
+              'id, height_cm, weight_kg, age, selected_language, notifications_enabled, updated_at')
+          .eq('id', uid)
+          .maybeSingle();
+      // ignore: avoid_print
+      print('DEBUG: Supabase verify profile row: $verify');
+
+      // #region agent log
+      AgentDebugLog.log(
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        location:
+            'lib/features/config/screens/settings_screen.dart:_persistProfileRemote',
+        message: 'Supabase profile upsert OK',
+        data: {
+          'verify_row_null': verify == null,
+          'verify_height_cm': verify?['height_cm'],
+          'verify_weight_kg': verify?['weight_kg'],
+          'verify_age': verify?['age'],
+        },
+      );
+      // #endregion
+      return true;
+    } on PostgrestException catch (e) {
+      // ignore: avoid_print
+      print(
+        'DEBUG: PostgrestException during profile upsert '
+        '(code=${e.code} message=${e.message} details=${e.details} hint=${e.hint})',
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('DEBUG: Unknown exception during profile upsert: $e');
+    }
+    if (debug) {
+      // ignore: avoid_print
+      print('DEBUG: Supabase profile upsert FAILED (caught exception)');
+    }
+    // #region agent log
+    AgentDebugLog.log(
+      runId: 'pre-fix',
+      hypothesisId: 'H2',
+      location:
+          'lib/features/config/screens/settings_screen.dart:_persistProfileRemote',
+      message: 'Supabase profile upsert FAILED (caught exception)',
+    );
+    // #endregion
+    return false;
   }
 
   Future<void> _loadTargetsForUser(String? uid) async {
@@ -316,10 +534,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _persistTargetsRemote({required bool showSnack}) async {
+  Future<bool> _persistTargetsRemote({required bool showSnack}) async {
     final uid = _client.auth.currentUser?.id;
-    if (uid == null) return;
-    if (!_targetsParseOk()) return;
+    if (uid == null) return false;
+    if (!_targetsParseOk()) return false;
 
     if (showSnack) setState(() => _saving = true);
     try {
@@ -339,22 +557,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           .maybeSingle();
 
       if (existing != null && existing['id'] != null) {
-        await _client.from('user_targets').update(fields).eq('id', existing['id']);
+        await _client
+            .from('user_targets')
+            .update({...fields, 'user_id': uid})
+            .eq('id', existing['id'])
+            .eq('user_id', uid);
       } else {
         await _client.from('user_targets').insert({...fields, 'user_id': uid});
       }
 
-      if (showSnack && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context)!.msgConfigSaved)),
-        );
-      }
+      return true;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString())),
         );
       }
+      return false;
     } finally {
       if (mounted && showSnack) setState(() => _saving = false);
     }
@@ -417,10 +636,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _targetsRemoteDebounce?.cancel();
 
     await _saveProfileLocal();
-    await _persistProfileRemote();
-    await _persistTargetsRemote(showSnack: true);
+    final okProfile = await _persistProfileRemote(debug: true);
+    final okTargets = await _persistTargetsRemote(showSnack: false);
     final uid = _client.auth.currentUser?.id;
     if (uid != null) await _loadTargetsForUser(uid);
+
+    if (!mounted) return;
+    if (!okProfile || !okTargets) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            !okProfile
+                ? 'SAVE FAILED: Profile did not persist to Supabase.'
+                : 'SAVE FAILED: Targets did not persist to Supabase.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context)!.msgConfigSaved)),
+    );
   }
 
   @override
@@ -475,8 +712,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<AppLanguagePreference>(
-                      key: ValueKey(LocaleSettings.preference),
-                      initialValue: LocaleSettings.preference,
+                      key: ValueKey(_selectedLanguage),
+                      initialValue: _selectedLanguage,
                       decoration: _decoration(l10n.languageLabel),
                       items: [
                         DropdownMenuItem(
@@ -494,6 +731,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                       onChanged: (v) async {
                         if (v == null) return;
+                        setState(() => _selectedLanguage = v);
                         await LocaleSettings.setPreference(v);
                         if (!mounted) return;
                         setState(() {});
@@ -539,6 +777,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: SwitchListTile(
                         value: _notificationsEnabled,
                         onChanged: (v) async {
+                          if (mounted) setState(() => _notificationsEnabled = v);
                           if (v) {
                             final ok =
                                 await NotificationService.requestPermissionIfNeeded(

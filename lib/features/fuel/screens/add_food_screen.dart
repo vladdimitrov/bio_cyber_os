@@ -41,9 +41,19 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     final form = _formKey.currentState;
     if (form == null || !form.validate()) return;
 
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in required to save food items.')),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       await _client.from('food_items').insert({
+        'user_id': uid,
         'name': _nameController.text.trim(),
         'is_recipe': false,
         'calories': _parseInt(_caloriesController.text),

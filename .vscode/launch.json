@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "BIO_CYBER_OS (Debug)",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "--dart-define", "SUPABASE_URL=https://rzelkxhvqetcyphvftrn.supabase.co",
+                "--dart-define", "SUPABASE_ANON_KEY=sb_publishable_QEY9ksuDlIJ7bDs0xGQs-g_dlgknaSn",
+                "--web-browser-flag", "--disable-web-security"
+            ]
+        },
+        {
+            "name": "BIO_CYBER_OS (Release Mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release",
+            "args": [
+                "--dart-define", "SUPABASE_URL=https://rzelkxhvqetcyphvftrn.supabase.co",
+                "--dart-define", "SUPABASE_ANON_KEY=sb_publishable_QEY9ksuDlIJ7bDs0xGQs-g_dlgknaSn",
+                "--web-browser-flag", "--disable-web-security"
+            ]
+        }
+    ]
+}

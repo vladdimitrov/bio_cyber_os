@@ -676,6 +676,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
       final response = await _client
           .from('daily_logs')
           .update({
+            'user_id': uid,
             'is_consumed': true,
             'consumed_at': DateTime.now().toUtc().toIso8601String(),
           })
@@ -780,6 +781,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         ? (item['amount_grams'] as num).toDouble()
         : record.amountGrams;
     final name = item['name']?.toString() ?? '?';
+    final showMacros = item['show_macros'] == true;
 
     final id = (item['id'] ?? '').toString();
     final rowKey = _rowKeys.putIfAbsent(id, () => GlobalKey());
@@ -842,14 +844,15 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                   ],
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  macroLine,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF757575),
-                    fontFamily: 'monospace',
+                if (showMacros)
+                  Text(
+                    macroLine,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF757575),
+                      fontFamily: 'monospace',
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1133,18 +1136,6 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                       child: ListView(
                         padding: const EdgeInsets.all(12),
                         children: [
-                          DefaultTextStyle(
-                            style: const TextStyle(
-                              color: cyan,
-                              fontFamily: 'monospace',
-                              letterSpacing: 1.0,
-                              fontWeight: FontWeight.w800,
-                            ),
-                            child: Text(l10n.dailyRecords),
-                          ),
-                          const SizedBox(height: 10),
-                          const _NeonDivider(),
-                          const SizedBox(height: 10),
                           if (_dailyRecords.isEmpty)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -1220,7 +1211,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   }
 }
 
-class _MealLogSection extends StatelessWidget {
+class _MealLogSection extends StatefulWidget {
   final String title;
   final List<_DailyRecord> entries;
   final VoidCallback onPlanMeal;
@@ -1277,10 +1268,72 @@ class _MealLogSection extends StatelessWidget {
   }
 
   @override
+  State<_MealLogSection> createState() => _MealLogSectionState();
+}
+
+class _NotchedFramePainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double notchWidth;
+  final double notchCenterX;
+
+  _NotchedFramePainter({
+    required this.color,
+    required this.strokeWidth,
+    required this.notchWidth,
+    required this.notchCenterX,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+
+    final r = Rect.fromLTWH(0, 0, size.width, size.height);
+    final leftNotch = (notchCenterX - notchWidth / 2).clamp(6.0, size.width - 6.0);
+    final rightNotch = (notchCenterX + notchWidth / 2).clamp(6.0, size.width - 6.0);
+
+    // Top border (split around notch). Draw at y=0, leave the notch gap.
+    canvas.drawLine(const Offset(0, 0), Offset(leftNotch, 0), p);
+    canvas.drawLine(Offset(rightNotch, 0), Offset(size.width, 0), p);
+
+    // Remaining borders
+    canvas.drawLine(const Offset(0, 0), Offset(0, size.height), p);
+    canvas.drawLine(Offset(size.width, 0), Offset(size.width, size.height), p);
+    canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height), p);
+
+    // Subtle inner glow
+    final glow = Paint()
+      ..color = color.withValues(alpha: 0.14)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(r.deflate(1.0), glow);
+  }
+
+  @override
+  bool shouldRepaint(covariant _NotchedFramePainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.notchWidth != notchWidth ||
+        oldDelegate.notchCenterX != notchCenterX;
+  }
+}
+
+class _MealLogSectionState extends State<_MealLogSection> {
+  bool _detailed = false;
+
+  @override
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
     final l10n = context.l10n;
+
+    final entries = widget.entries;
+    final toItemMap = widget.toItemMap;
+    final buildFoodItemRow = widget.buildFoodItemRow;
+    final onPlanMeal = widget.onPlanMeal;
+    final title = widget.title;
 
     final planned = entries
         .where((e) => toItemMap(e)['consumed_at'] == null)
@@ -1293,140 +1346,197 @@ class _MealLogSection extends StatelessWidget {
 
     final subAll = <double>[0, 0, 0, 0];
     for (final e in entries) {
-      _accumulateLineMacros(e, subAll);
+      _MealLogSection._accumulateLineMacros(e, subAll);
     }
     final subPlanned = <double>[0, 0, 0, 0];
     for (final e in planned) {
-      _accumulateLineMacros(e, subPlanned);
+      _MealLogSection._accumulateLineMacros(e, subPlanned);
     }
     final subConsumed = <double>[0, 0, 0, 0];
     for (final e in consumed) {
-      _accumulateLineMacros(e, subConsumed);
+      _MealLogSection._accumulateLineMacros(e, subConsumed);
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(color: cyan, width: 1),
-        boxShadow: const [
-          BoxShadow(color: Color(0x2200F3FF), blurRadius: 8),
-        ],
-      ),
-      child: DefaultTextStyle(
-        style: const TextStyle(
-          color: cyan,
-          fontFamily: 'monospace',
-          letterSpacing: 0.4,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: onPlanMeal,
-              borderRadius: BorderRadius.zero,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+    const titleNeon = Color(0xFF00FFFF);
+    final titleStyle = const TextStyle(
+      color: titleNeon,
+      fontFamily: 'monospace',
+      fontWeight: FontWeight.bold,
+      letterSpacing: 1.4,
+      fontSize: 16,
+    );
+    final tp = TextPainter(
+      text: TextSpan(text: title.toUpperCase(), style: titleStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    // notch includes title + detail-toggle icon spacing
+    final notchW = tp.width + 26 + 34;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onPlanMeal,
+        splashColor: const Color(0x2200F3FF),
+        highlightColor: Colors.transparent,
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final w = c.maxWidth;
+            final notchCenterX = w / 2;
+            return CustomPaint(
+              painter: _NotchedFramePainter(
+                color: cyan,
+                strokeWidth: 1,
+                notchWidth: notchW.clamp(80.0, w - 16),
+                notchCenterX: notchCenterX,
+              ),
+              child: Container(
+                color: bg,
+                // More top padding so header notch content never clips.
+                padding: const EdgeInsets.fromLTRB(12, 26, 12, 12),
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.1,
+                    // Title embedded in top border notch.
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: -24,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          color: bg,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(title.toUpperCase(), style: titleStyle),
+                              const SizedBox(width: 6),
+                              IconButton(
+                                onPressed: () =>
+                                    setState(() => _detailed = !_detailed),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
+                                icon: Icon(
+                                  _detailed
+                                      ? Icons.visibility_off
+                                      : Icons.visibility,
+                                  size: 20,
+                                  color: _detailed
+                                      ? const Color(0xFF00F3FF)
+                                      : const Color(0xFF88CCFF),
+                                ),
+                                tooltip: _detailed
+                                    ? 'Hide details'
+                                    : 'Show details',
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                    TextButton(
-                      onPressed: onPlanMeal,
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF88CCFF),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    DefaultTextStyle(
+                      style: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                        letterSpacing: 0.4,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.add, size: 14),
-                          const SizedBox(width: 2),
-                          Text(
-                            l10n.actionAddPlan,
-                            style: const TextStyle(fontSize: 11),
-                          ),
+                          const SizedBox(height: 6),
+                          if (_detailed) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '${l10n.subtotal}  ${l10n.fuelMacrosLine(
+                                subAll[0].toStringAsFixed(1),
+                                subAll[1].toStringAsFixed(1),
+                                subAll[2].toStringAsFixed(1),
+                                subAll[3].round().toString(),
+                              )}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                            if (planned.isNotEmpty || consumed.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                l10n.formatMacroCompare(subConsumed, subPlanned),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  letterSpacing: 0.4,
+                                  color: Color(0x8800F3FF),
+                                ),
+                              ),
+                            ],
+                          ],
+
+                          const SizedBox(height: 10),
+                          if (entries.isEmpty)
+                            Text(
+                              l10n.fuelNoItemsBlock,
+                              style: const TextStyle(
+                                color: Color(0x8800F3FF),
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                                height: 1.3,
+                              ),
+                            )
+                          else ...[
+                            if (planned.isNotEmpty) ...[
+                              Text(
+                                l10n.plannedUpper,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.0,
+                                  color: Color(0xFF88CCFF),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              for (final e in planned)
+                                buildFoodItemRow(
+                                  context,
+                                  {
+                                    ...toItemMap(e),
+                                    'show_macros': _detailed,
+                                  },
+                                ),
+                              if (consumed.isNotEmpty) const SizedBox(height: 8),
+                            ],
+                            if (consumed.isNotEmpty) ...[
+                              Text(
+                                l10n.consumedUpper,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              for (final e in consumed)
+                                buildFoodItemRow(
+                                  context,
+                                  {
+                                    ...toItemMap(e),
+                                    'show_macros': _detailed,
+                                  },
+                                ),
+                            ],
+                          ],
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${l10n.subtotal}  ${l10n.fuelMacrosLine(
-                subAll[0].toStringAsFixed(1),
-                subAll[1].toStringAsFixed(1),
-                subAll[2].toStringAsFixed(1),
-                subAll[3].round().toString(),
-              )}',
-              style: const TextStyle(fontSize: 12, letterSpacing: 0.6),
-            ),
-            if (planned.isNotEmpty || consumed.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                l10n.formatMacroCompare(subConsumed, subPlanned),
-                style: const TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 0.4,
-                  color: Color(0x8800F3FF),
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            if (entries.isEmpty)
-              Text(
-                l10n.fuelNoItemsBlock,
-                style: const TextStyle(
-                  color: Color(0x8800F3FF),
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  height: 1.3,
-                ),
-              )
-            else ...[
-              if (planned.isNotEmpty) ...[
-                Text(
-                  l10n.plannedUpper,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.0,
-                    color: Color(0xFF88CCFF),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                for (final e in planned)
-                  buildFoodItemRow(context, toItemMap(e)),
-                if (consumed.isNotEmpty) const SizedBox(height: 8),
-              ],
-              if (consumed.isNotEmpty) ...[
-                Text(
-                  l10n.consumedUpper,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                for (final e in consumed)
-                  buildFoodItemRow(context, toItemMap(e)),
-              ],
-            ],
-          ],
+            );
+          },
         ),
       ),
     );
@@ -1709,8 +1819,8 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
   DateTime? _editConsumedAtLocal;
   _EditReminderMode _editReminderMode = _EditReminderMode.none;
   TimeOfDay? _editSpecificReminder;
-  final _editMinutesBeforeCtrl = TextEditingController(text: '30');
-  int _editMinutesBefore = 30;
+  final _editMinutesBeforeCtrl = TextEditingController(text: '5');
+  int _editMinutesBefore = 5;
 
   @override
   void initState() {
@@ -1908,6 +2018,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
       final consumedLocal = _editConsumedAtLocal ?? DateTime.now();
       final reminderLocal = _computeEditReminderAtLocal();
       await _client.from(widget.logsTable).update({
+        'user_id': uid,
         'amount_grams': v,
         'consumed_at': consumedLocal.toUtc().toIso8601String(),
         'scheduled_at': consumedLocal.toUtc().toIso8601String(),
@@ -2100,8 +2211,11 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                         setState(() => _editSpecificReminder = picked);
                       },
                       minutesBeforeController: _editMinutesBeforeCtrl,
-                      onMinutesChanged: (mins) =>
-                          setState(() => _editMinutesBefore = mins),
+                      onMinutesChanged: (mins) {
+                        // Prevent crashes / weirdness on empty: keep last valid.
+                        if (mins <= 0) return;
+                        setState(() => _editMinutesBefore = mins);
+                      },
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton(
@@ -2709,6 +2823,7 @@ class _EditReminderSection extends StatelessWidget {
   final VoidCallback onPickSpecific;
   final TextEditingController minutesBeforeController;
   final ValueChanged<int> onMinutesChanged;
+  final List<int> quickOffsets;
 
   const _EditReminderSection({
     required this.mode,
@@ -2717,6 +2832,7 @@ class _EditReminderSection extends StatelessWidget {
     required this.onPickSpecific,
     required this.minutesBeforeController,
     required this.onMinutesChanged,
+    this.quickOffsets = const [5, 15, 30, 60],
   });
 
   @override
@@ -2807,7 +2923,7 @@ class _EditReminderSection extends StatelessWidget {
               ),
             ],
           ),
-        if (mode == _EditReminderMode.minutesBefore)
+        if (mode == _EditReminderMode.minutesBefore) ...[
           Row(
             children: [
               Expanded(
@@ -2825,26 +2941,59 @@ class _EditReminderSection extends StatelessWidget {
                 child: TextField(
                   controller: minutesBeforeController,
                   keyboardType: TextInputType.number,
+                  textAlign: TextAlign.left,
                   style: const TextStyle(color: cyan, fontFamily: 'monospace'),
                   onChanged: (v) {
-                    final mins = int.tryParse(v.trim());
+                    final t = v.trim();
+                    if (t.isEmpty) {
+                      // Prevent crashes: treat empty as 0 (caller can decide fallback).
+                      onMinutesChanged(0);
+                      return;
+                    }
+                    final mins = int.tryParse(t);
                     if (mins != null) onMinutesChanged(mins);
                   },
                   decoration: const InputDecoration(
                     hintText: '30',
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: cyan, width: 1),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: cyan, width: 1.5),
-                    ),
+                    isDense: true,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    border: InputBorder.none,
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (final m in quickOffsets)
+                ActionChip(
+                  label: Text(
+                    '$m',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                      color: cyan,
+                      fontSize: 11,
+                    ),
+                  ),
+                  backgroundColor: const Color(0xFF050510),
+                  side: const BorderSide(color: cyan, width: 1),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                  onPressed: () {
+                    minutesBeforeController.text = '$m';
+                    onMinutesChanged(m);
+                  },
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -2862,47 +3011,31 @@ class _UnifiedMacroBarPainter extends CustomPainter {
     required this.target,
   });
 
-  static void _dashedHorizontal(
+  static void _dottedHorizontal(
     Canvas canvas,
     double x0,
     double x1,
     double y,
     Paint paint,
   ) {
-    var x = x0;
-    var draw = true;
-    const dash = 4.0;
-    const gap = 3.0;
-    while (x < x1) {
-      final seg = draw ? dash : gap;
-      final end = math.min(x + seg, x1);
-      if (draw) {
-        canvas.drawLine(Offset(x, y), Offset(end, y), paint);
-      }
-      x = end;
-      draw = !draw;
+    final step = (paint.strokeWidth <= 1.0) ? 5.0 : 6.0;
+    final r = math.max(0.9, paint.strokeWidth * 0.9);
+    for (var x = x0; x <= x1; x += step) {
+      canvas.drawCircle(Offset(x, y), r, paint);
     }
   }
 
-  static void _dashedVertical(
+  static void _dottedVertical(
     Canvas canvas,
     double x,
     double y0,
     double y1,
     Paint paint,
   ) {
-    var y = y0;
-    var draw = true;
-    const dash = 3.0;
-    const gap = 2.5;
-    while (y < y1) {
-      final seg = draw ? dash : gap;
-      final end = math.min(y + seg, y1);
-      if (draw) {
-        canvas.drawLine(Offset(x, y), Offset(x, end), paint);
-      }
-      y = end;
-      draw = !draw;
+    final step = (paint.strokeWidth <= 1.0) ? 4.5 : 5.5;
+    final r = math.max(0.9, paint.strokeWidth * 0.9);
+    for (var y = y0; y <= y1; y += step) {
+      canvas.drawCircle(Offset(x, y), r, paint);
     }
   }
 
@@ -2935,10 +3068,10 @@ class _UnifiedMacroBarPainter extends CustomPainter {
       final edge = Paint()
         ..color = const Color(0xAA88CCFF)
         ..strokeWidth = 1.1
-        ..style = PaintingStyle.stroke;
-      _dashedHorizontal(canvas, consPx, progPx, 0.5, edge);
-      _dashedHorizontal(canvas, consPx, progPx, h - 0.5, edge);
-      _dashedVertical(canvas, progPx.clamp(1.0, w - 1), 0, h, edge);
+        ..style = PaintingStyle.fill;
+      _dottedHorizontal(canvas, consPx, progPx, 0.9, edge);
+      _dottedHorizontal(canvas, consPx, progPx, h - 0.9, edge);
+      _dottedVertical(canvas, progPx.clamp(1.0, w - 1), 0.8, h - 0.8, edge);
     }
 
     if (consPx > 0) {
@@ -2984,71 +3117,69 @@ class _DualMacroBar extends StatelessWidget {
     return v.toStringAsFixed(decimals);
   }
 
+  String _shortLabel(String raw) {
+    final t = raw.trim().toLowerCase();
+    if (t.startsWith('protein')) return 'PRO';
+    if (t.contains('carb') || t.contains('въг')) return 'CHO';
+    if (t.contains('fat') || t.contains('маз')) return 'FAT';
+    if (t.contains('cal')) return 'KCAL';
+    return raw.length > 6 ? raw.substring(0, 6).toUpperCase() : raw.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
-    const cyan = Color(0xFF00F3FF);
-    final l10n = AppLocalizations.of(context)!;
+    const yellow = Color(0xFFFFFF00);
     final t = target > 0 ? target : 1.0;
     final u = unit.isEmpty ? '' : unit;
+    final plannedPending = math.max(0.0, prognostic - consumed);
+    final short = _shortLabel(label);
+    final overlayText =
+        '$short: C: ${_fmt(consumed)}$u / T: ${_fmt(target)}$u (P: ${_fmt(plannedPending)}$u)';
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 72,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: cyan,
-                fontFamily: 'monospace',
-                fontSize: 11,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return LayoutBuilder(
+      builder: (context, c) {
+        final fw = c.maxWidth;
+        if (fw <= 0) return const SizedBox(height: 18);
+        return SizedBox(
+          height: 18,
+          width: fw,
+          child: Stack(
+            alignment: Alignment.centerLeft,
             children: [
-              LayoutBuilder(
-                builder: (context, c) {
-                  final fw = c.maxWidth;
-                  if (fw <= 0) return const SizedBox(height: 14);
-                  return SizedBox(
-                    height: 14,
-                    width: fw,
-                    child: CustomPaint(
-                      size: Size(fw, 14),
-                      painter: _UnifiedMacroBarPainter(
-                        consumed: consumed,
-                        prognostic: prognostic,
-                        target: t,
-                      ),
-                    ),
-                  );
-                },
+              CustomPaint(
+                size: Size(fw, 18),
+                painter: _UnifiedMacroBarPainter(
+                  consumed: consumed,
+                  prognostic: prognostic,
+                  target: t,
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '${_fmt(consumed)}$u ${l10n.nutritionEatenShort}  ·  '
-                '${_fmt(prognostic)}$u ${l10n.nutritionWithPlanShort}  ·  '
-                '${_fmt(target)}$u ${l10n.nutritionTargetShort}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 9,
-                  letterSpacing: 0.15,
-                  color: Color(0xAA00F3FF),
-                  fontFamily: 'monospace',
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  overlayText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: yellow,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11,
+                    letterSpacing: 0.2,
+                    shadows: [
+                      Shadow(
+                        color: Color(0xCC000000),
+                        blurRadius: 2,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

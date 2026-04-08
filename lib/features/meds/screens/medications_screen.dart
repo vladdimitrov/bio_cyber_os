@@ -1407,6 +1407,18 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
     if (_saving) return;
     setState(() => _saving = true);
     try {
+      final uid = _client.auth.currentUser?.id;
+      if (uid == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.msgSignInSave),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+
       final amt = _parseAmount();
       if (amt == null || amt <= 0) {
         if (!mounted) return;
@@ -1423,6 +1435,7 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
           : (_reminder.mode == ReminderMode.minutesBefore ? _reminder.offsetMinutes : 0);
 
       final update = <String, dynamic>{
+        'user_id': uid,
         'dose_amount': amt,
         'unit_type': _unit,
         'notes': _notesCtrl.text,
@@ -1432,18 +1445,6 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
         'reminder_at': reminderLocal?.toUtc().toIso8601String(),
         'reminder_offset_minutes': reminderOffsetMinutes,
       };
-
-      final uid = _client.auth.currentUser?.id;
-      if (uid == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.msgSignInSave),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-        return;
-      }
       await _client
           .from('medication_logs')
           .update(update)

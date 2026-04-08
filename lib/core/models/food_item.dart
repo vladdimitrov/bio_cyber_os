@@ -7,6 +7,8 @@ class FoodItem {
   final double carbsG;
   final double fatsG;
   final double fiberG;
+  /// Owner; matches `food_items.user_id` in Supabase (formerly `created_by`).
+  final String? userId;
 
   const FoodItem({
     required this.id,
@@ -17,6 +19,7 @@ class FoodItem {
     required this.carbsG,
     required this.fatsG,
     required this.fiberG,
+    this.userId,
   });
 
   factory FoodItem.fromJson(Map<String, dynamic> json) {
@@ -39,6 +42,7 @@ class FoodItem {
       return s == 'true' || s == '1';
     }
 
+    final ownerId = json['user_id'];
     return FoodItem(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
@@ -48,7 +52,19 @@ class FoodItem {
       carbsG: asDouble(json['carbs_g']),
       fatsG: asDouble(json['fats_g']),
       fiberG: asDouble(json['fiber_g']),
+      userId: ownerId?.toString(),
     );
   }
-}
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'is_recipe': isRecipe,
+        'calories': calories,
+        'protein_g': proteinG,
+        'carbs_g': carbsG,
+        'fats_g': fatsG,
+        'fiber_g': fiberG,
+        if (userId != null) 'user_id': userId,
+      };
+}

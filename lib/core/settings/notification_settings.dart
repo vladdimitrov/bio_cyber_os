@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NotificationSettings {
   NotificationSettings._();
@@ -25,6 +26,20 @@ class NotificationSettings {
     try {
       final p = await SharedPreferences.getInstance();
       await p.setBool(_prefKey, next);
+    } catch (_) {}
+
+    // Best-effort: also persist preference remotely for the signed-in user.
+    try {
+      final client = Supabase.instance.client;
+      final uid = client.auth.currentUser?.id;
+      if (uid == null) return;
+      await client.from('profiles').upsert(
+        {
+          'id': uid,
+          'notifications_enabled': next,
+        },
+        onConflict: 'id',
+      );
     } catch (_) {}
   }
 }

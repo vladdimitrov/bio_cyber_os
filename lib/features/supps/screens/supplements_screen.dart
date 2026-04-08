@@ -1448,6 +1448,7 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
       await _client
           .from('daily_logs')
           .update({
+            'user_id': uid,
             'amount_grams': amt,
             'unit': _unit,
             'notes': _noteController.text,
