@@ -3083,7 +3083,7 @@ class _UnifiedMacroBarPainter extends CustomPainter {
 
     canvas.drawRect(
       Rect.fromLTWH(w - 2, 0, 2, h),
-      Paint()..color = const Color(0xFFFFCC00),
+      Paint()..color = const Color(0xFFFFC107),
     );
   }
 
@@ -3128,7 +3128,7 @@ class _DualMacroBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const yellow = Color(0xFFFFFF00);
+    const amber = Color(0xFFFFC107);
     final t = target > 0 ? target : 1.0;
     final u = unit.isEmpty ? '' : unit;
     final plannedPending = math.max(0.0, prognostic - consumed);
@@ -3161,9 +3161,9 @@ class _DualMacroBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: yellow,
+                    color: amber,
                     fontFamily: 'monospace',
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.bold,
                     fontSize: 11,
                     letterSpacing: 0.2,
                     shadows: [

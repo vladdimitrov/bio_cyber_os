@@ -8,6 +8,7 @@ import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
 import '../../../core/debug/agent_debug_log.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/security/biometric_auth_service.dart';
 import '../../../core/settings/locale_settings.dart';
 import '../../../core/settings/measurement_settings.dart';
 import '../../../core/settings/unit_converter.dart';
@@ -53,6 +54,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = false;
   AppLanguagePreference _selectedLanguage = AppLanguagePreference.system;
   bool _updatingDisplay = false;
+  bool _biometricAvailable = false;
+  bool _biometricEnabled = false;
+  String? _lastProfileUpsertError;
 
   void _onProfileFieldsChanged() {
     if (_hydratingProfile) return;
@@ -243,6 +247,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     MeasurementSettings.system.addListener(_onMeasurementChanged);
     NotificationSettings.enabled.addListener(_onNotificationsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapScreen());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBiometricSettings());
+  }
+
+  Future<void> _loadBiometricSettings() async {
+    final available = await BiometricAuthService.isAvailable();
+    final enabled = await BiometricAuthService.isEnabled();
+    if (!mounted) return;
+    setState(() {
+      _biometricAvailable = available;
+      _biometricEnabled = enabled;
+    });
   }
 
   Future<void> _bootstrapScreen() async {
@@ -360,6 +375,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     // ignore: avoid_print
     print('DEBUG: Saving profile for User ID: $uid');
+    if (debug) {
+      // ignore: avoid_print
+      print(
+        'DEBUG: Supabase session present: ${_client.auth.currentSession != null}',
+      );
+      // ignore: avoid_print
+      print(
+        'DEBUG: Supabase session user id: ${_client.auth.currentSession?.user.id}',
+      );
+    }
 
     double? parseNum(String v) {
       final t = v.trim().replaceAll(',', '.');
@@ -410,14 +435,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final payload = <String, dynamic>{
       'id': uid,
-      'height_cm': hCm,
-      'weight_kg': wKg,
+      // Supabase schema: height_cm is INTEGER, avoid sending "174.0".
+      'height_cm': hCm?.round(),
+      // Supabase schema: weight_kg is INTEGER, avoid sending "65.0".
+      'weight_kg': wKg?.round(),
       'age': ageTrim.isEmpty ? null : ageInt,
       'selected_language': lang,
       'notifications_enabled': isEnabled,
     };
 
     try {
+      _lastProfileUpsertError = null;
       if (debug) {
         // ignore: avoid_print
         print('DEBUG: Supabase update payload: $payload');
@@ -444,39 +472,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
         print('DEBUG: Supabase profile upsert OK');
       }
 
-      // Verify immediately by reading back the row.
-      final verify = await _client
-          .from('profiles')
-          .select(
-              'id, height_cm, weight_kg, age, selected_language, notifications_enabled, updated_at')
-          .eq('id', uid)
-          .maybeSingle();
-      // ignore: avoid_print
-      print('DEBUG: Supabase verify profile row: $verify');
+      // Best-effort verify/readback (never fail the save if this errors).
+      // On some RLS setups, UPDATE may be allowed while SELECT is denied.
+      if (debug) {
+        try {
+          final verify = await _client
+              .from('profiles')
+              .select(
+                'id, height_cm, weight_kg, age, selected_language, notifications_enabled, updated_at',
+              )
+              .eq('id', uid)
+              .maybeSingle();
+          // ignore: avoid_print
+          print('DEBUG: Supabase verify profile row: $verify');
+        } catch (e) {
+          // ignore: avoid_print
+          print('DEBUG: Supabase verify read-back failed (ignored): $e');
+        }
+      }
 
-      // #region agent log
-      AgentDebugLog.log(
-        runId: 'pre-fix',
-        hypothesisId: 'H2',
-        location:
-            'lib/features/config/screens/settings_screen.dart:_persistProfileRemote',
-        message: 'Supabase profile upsert OK',
-        data: {
-          'verify_row_null': verify == null,
-          'verify_height_cm': verify?['height_cm'],
-          'verify_weight_kg': verify?['weight_kg'],
-          'verify_age': verify?['age'],
-        },
-      );
-      // #endregion
+      // Treat as SUCCESS if upsert did not throw.
       return true;
     } on PostgrestException catch (e) {
+      final msg =
+          'PostgrestException(code=${e.code}, message=${e.message}, details=${e.details}, hint=${e.hint})';
+      _lastProfileUpsertError = msg;
       // ignore: avoid_print
       print(
         'DEBUG: PostgrestException during profile upsert '
         '(code=${e.code} message=${e.message} details=${e.details} hint=${e.hint})',
       );
+      AgentDebugLog.log(
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        location:
+            'lib/features/config/screens/settings_screen.dart:_persistProfileRemote',
+        message: 'PostgrestException during profile upsert',
+        data: {
+          'uid': uid,
+          'code': e.code,
+          'message': e.message,
+          'details': e.details,
+          'hint': e.hint,
+          'session_present': _client.auth.currentSession != null,
+          'session_user_id': _client.auth.currentSession?.user.id,
+        },
+      );
     } catch (e) {
+      _lastProfileUpsertError = e.toString();
       // ignore: avoid_print
       print('DEBUG: Unknown exception during profile upsert: $e');
     }
@@ -541,11 +584,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (showSnack) setState(() => _saving = true);
     try {
+      int roundDoubleText(String v) =>
+          (double.tryParse(v.trim()) ?? 0.0).round();
       final fields = <String, dynamic>{
-        'protein_target': _parseDouble(_proteinController.text),
-        'carbs_target': _parseDouble(_carbsController.text),
-        'fat_target': _parseDouble(_fatsController.text),
-        'calories_target': _parseInt(_caloriesController.text),
+        // Supabase schema: targets are INTEGERs, avoid "110.0" etc.
+        'protein_target': roundDoubleText(_proteinController.text),
+        'carbs_target': roundDoubleText(_carbsController.text),
+        'fat_target': roundDoubleText(_fatsController.text),
+        'calories_target': roundDoubleText(_caloriesController.text),
       };
 
       final existing = await _client
@@ -617,9 +663,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _notificationsEnabled = NotificationSettings.enabled.value);
   }
 
-  int _parseInt(String v) => int.tryParse(v.trim()) ?? 0;
-  double _parseDouble(String v) => double.tryParse(v.trim()) ?? 0.0;
-
   InputDecoration _decoration(String label) {
     const cyan = Color(0xFF00F3FF);
     return InputDecoration(
@@ -643,11 +686,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (!mounted) return;
     if (!okProfile || !okTargets) {
+      final profileDetail =
+          (!okProfile && (_lastProfileUpsertError ?? '').trim().isNotEmpty)
+              ? '\n${_lastProfileUpsertError!}'
+              : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             !okProfile
-                ? 'SAVE FAILED: Profile did not persist to Supabase.'
+                ? 'SAVE FAILED: Profile did not persist to Supabase.$profileDetail'
                 : 'SAVE FAILED: Targets did not persist to Supabase.',
           ),
         ),
@@ -656,7 +703,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppLocalizations.of(context)!.msgConfigSaved)),
+      const SnackBar(content: Text('SUCCESS')),
     );
   }
 
@@ -810,6 +857,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         subtitle: Text(
                           l10n.settingsNotificationsSubtitle,
+                          style: const TextStyle(
+                            color: Color(0xFF757575),
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                          ),
+                        ),
+                        activeThumbColor: cyan,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'SECURITY',
+                      style: const TextStyle(
+                        color: Color(0x8800F3FF),
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        letterSpacing: 1.0,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: cyan, width: 1),
+                      ),
+                      child: SwitchListTile(
+                        value: _biometricEnabled,
+                        onChanged: !_biometricAvailable
+                            ? null
+                            : (v) async {
+                                if (v) {
+                                  final ok =
+                                      await BiometricAuthService.authenticate();
+                                  if (!context.mounted) return;
+                                  if (!ok) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Biometric authentication failed.',
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  await BiometricAuthService.setEnabled(true);
+                                  if (!context.mounted) return;
+                                  setState(() => _biometricEnabled = true);
+                                } else {
+                                  await BiometricAuthService.setEnabled(false);
+                                  if (!context.mounted) return;
+                                  setState(() => _biometricEnabled = false);
+                                }
+                              },
+                        title: Text(
+                          'Use Biometric Authentication',
+                          style: const TextStyle(
+                            color: cyan,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _biometricAvailable
+                              ? 'Unlock using fingerprint/face (requires you to log in once first).'
+                              : 'Biometrics not available on this device.',
                           style: const TextStyle(
                             color: Color(0xFF757575),
                             fontFamily: 'monospace',

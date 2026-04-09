@@ -9,6 +9,7 @@ import 'core/bootstrap/user_bootstrap.dart';
 import 'core/debug/agent_debug_log.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/navigation/app_navigator.dart';
+import 'core/security/supabase_secure_local_storage.dart';
 import 'core/settings/locale_settings.dart';
 import 'core/settings/measurement_settings.dart';
 import 'core/settings/notification_settings.dart';
@@ -34,6 +35,9 @@ Future<void> main() async {
   await Supabase.initialize(
     url: AppConfig.supabaseUrl,
     anonKey: AppConfig.supabaseAnonKey,
+    authOptions: FlutterAuthClientOptions(
+      localStorage: SupabaseSecureLocalStorage(),
+    ),
   );
 
   // Safe no-op on web; initializes on supported platforms.
