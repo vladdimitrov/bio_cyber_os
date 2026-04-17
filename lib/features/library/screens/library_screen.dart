@@ -4,9 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
 import '../../../core/macro_display.dart';
+import '../../../core/supabase_error_message.dart';
 import '../../../core/models/ingredient.dart';
 import '../../../core/models/supplement.dart';
+import '../../../core/services/open_food_facts_service.dart';
 import '../../../core/widgets/diet_indicator_badges.dart';
+import '../../food/screens/barcode_scanner_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -24,7 +27,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -59,6 +62,7 @@ class _LibraryScreenState extends State<LibraryScreen>
             Tab(text: 'INGREDIENTS'),
             Tab(text: 'RECIPES'),
             Tab(text: 'SUPPLEMENTS'),
+            Tab(text: 'MEDS'),
           ],
         ),
       ),
@@ -84,10 +88,15 @@ class _LibraryScreenState extends State<LibraryScreen>
                   const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
               builder: (_) => const _RecipeBuilderSheet(),
             );
-          } else {
+          } else if (idx == 2) {
             changed = await showDialog<bool>(
               context: context,
               builder: (_) => const _SupplementDialog(),
+            );
+          } else {
+            changed = await showDialog<bool>(
+              context: context,
+              builder: (_) => const _MedicationDialog(),
             );
           }
           if (changed == true) _reload();
@@ -109,8 +118,213 @@ class _LibraryScreenState extends State<LibraryScreen>
             key: ValueKey('sup-$_reloadTick'),
             onChanged: _reload,
           ),
+          _MedsTab(
+            key: ValueKey('med-$_reloadTick'),
+            onChanged: _reload,
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _MedsTab extends StatefulWidget {
+  final VoidCallback onChanged;
+
+  const _MedsTab({super.key, required this.onChanged});
+
+  @override
+  State<_MedsTab> createState() => _MedsTabState();
+}
+
+class _MedsTabState extends State<_MedsTab> {
+  final _client = Supabase.instance.client;
+  late Future<List<Map<String, dynamic>>> _future;
+  List<Map<String, dynamic>> _rows = const [];
+
+  Widget _ownershipBadge(Object? userId) {
+    const cyan = Color(0xFF00F3FF);
+    final uid = _client.auth.currentUser?.id;
+    final isSystem = userId == null;
+    final isPersonal = !isSystem && uid != null && userId.toString() == uid;
+    final label = isSystem ? 'SYSTEM' : (isPersonal ? 'PERSONAL' : 'SHARED');
+    final color = isSystem
+        ? const Color(0xFF757575)
+        : (isPersonal ? cyan : const Color(0xFF88CCFF));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: color, width: 1),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontFamily: 'monospace',
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _load() async {
+    final data = await _client.from('medications').select().order('name');
+    return (data as List).cast<Map<String, dynamic>>();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<void> _refresh() async {
+    final data = await _load();
+    if (!mounted) return;
+    setState(() {
+      _rows = data;
+      _future = Future.value(data);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const cyan = Color(0xFF00F3FF);
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _future,
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          if (snap.hasError) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: SelectableText(
+                snap.error.toString(),
+                style: const TextStyle(color: cyan),
+              ),
+            );
+          }
+          return const Center(child: CircularProgressIndicator());
+        }
+        final rows = List<Map<String, dynamic>>.from(snap.data!);
+        _rows = rows;
+        if (rows.isEmpty) {
+          return const Center(
+            child: Text(
+              'No meds',
+              style: TextStyle(color: cyan, fontFamily: 'monospace'),
+            ),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: rows.length,
+          itemBuilder: (context, index) {
+            final r = rows[index];
+            final id = (r['id'] ?? '').toString();
+            final name = (r['name'] ?? '').toString();
+            final uid = _client.auth.currentUser?.id;
+            final ownerId = r['user_id'];
+            final isSystem = ownerId == null;
+            final canEditDelete =
+                !isSystem && uid != null && ownerId.toString() == uid;
+
+            return ListTile(
+              leading: const Icon(Icons.medication_liquid_outlined, color: cyan),
+              title: Text(
+                name,
+                style: const TextStyle(
+                  color: cyan,
+                  fontFamily: 'monospace',
+                  letterSpacing: 0.6,
+                ),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: _ownershipBadge(ownerId),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (canEditDelete) ...[
+                    IconButton(
+                      tooltip: 'Edit',
+                      onPressed: () async {
+                        final changed = await showDialog<bool>(
+                          context: context,
+                          builder: (_) => _MedicationDialog(existing: r),
+                        );
+                        if (changed == true) {
+                          await _refresh();
+                          widget.onChanged();
+                        }
+                      },
+                      icon: const Icon(Icons.edit, color: cyan),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete',
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final ok = await _confirmDeleteDialog(
+                          context,
+                          title: 'DELETE MED',
+                          body: name,
+                        );
+                        if (!ok) return;
+                        setState(() {
+                          _rows = _rows
+                              .where(
+                                (x) => (x['id'] ?? '').toString() != id,
+                              )
+                              .toList(growable: false);
+                          _future = Future.value(_rows);
+                        });
+                        try {
+                          await _client
+                              .from('medications')
+                              .delete()
+                              .eq('id', r['id']);
+                          if (mounted) _refresh();
+                        } on PostgrestException catch (e) {
+                          if (!mounted) return;
+                          if (e.code == '23503') {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Error: Cannot delete a med that is already logged.',
+                                ),
+                                backgroundColor: Colors.redAccent,
+                                duration: Duration(seconds: 4),
+                              ),
+                            );
+                          } else {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('DB Error: ${e.message}'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (!mounted) return;
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('Error: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -177,7 +391,6 @@ class _IngredientsTab extends StatefulWidget {
 class _IngredientsTabState extends State<_IngredientsTab> {
   final _client = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _future;
-  List<Map<String, dynamic>> _rows = const [];
 
   Widget _ownershipBadge(Object? userId) {
     const cyan = Color(0xFF00F3FF);
@@ -246,7 +459,6 @@ class _IngredientsTabState extends State<_IngredientsTab> {
           return const Center(child: CircularProgressIndicator());
         }
         final rows = List<Map<String, dynamic>>.from(snap.data!);
-        _rows = rows;
         if (rows.isEmpty) {
           return const Center(
             child: Text(
@@ -326,24 +538,33 @@ class _IngredientsTabState extends State<_IngredientsTab> {
                     IconButton(
                       tooltip: 'Delete',
                       onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         final ok = await _confirmDeleteDialog(
                           context,
                           title: 'DELETE INGREDIENT',
                           body: name,
                         );
                         if (!ok) return;
-                        // Optimistic local removal for instant UI feedback.
-                        setState(() {
-                          _rows = _rows
-                              .where(
-                                (x) => (x['id'] ?? '').toString() != id,
-                              )
-                              .toList(growable: false);
-                          _future = Future.value(_rows);
-                        });
-                        await _client.from('ingredients').delete().eq('id', id);
-                        _refresh(); // re-fetch authoritative data
-                        widget.onChanged();
+                        try {
+                          await _client.from('ingredients').delete().eq('id', id);
+                          if (!mounted) return;
+                          setState(() {
+                            _future = _load();
+                          });
+                          widget.onChanged();
+                        } catch (e) {
+                          if (!mounted) return;
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(supabaseWriteErrorMessage(e)),
+                              backgroundColor: Colors.redAccent,
+                              showCloseIcon: true,
+                            ),
+                          );
+                          setState(() {
+                            _future = _load();
+                          });
+                        }
                       },
                       icon: const Icon(Icons.delete, color: Colors.red),
                     ),
@@ -1040,6 +1261,7 @@ class _SupplementDialogState extends State<_SupplementDialog> {
 
   late final TextEditingController _name;
   late final TextEditingController _dosage;
+  String? _barcode;
   String _unit = 'drops';
   static const List<String> allowedUnits = ['g', 'mg', 'ml', 'drops', 'capsules'];
 
@@ -1048,6 +1270,7 @@ class _SupplementDialogState extends State<_SupplementDialog> {
   int _allergenLevel = 1;
 
   bool _saving = false;
+  bool _barcodeBusy = false;
 
   @override
   void initState() {
@@ -1055,6 +1278,9 @@ class _SupplementDialogState extends State<_SupplementDialog> {
     final e = widget.existing;
     _name = TextEditingController(text: (e?['name'] ?? '').toString());
     _dosage = TextEditingController(text: (e?['daily_dosage'] ?? '').toString());
+    _barcode = (e?['barcode'] ?? '').toString().trim().isEmpty
+        ? null
+        : (e?['barcode'] ?? '').toString().trim();
 
     // Sanitize legacy DB values to prevent DropdownButton value crashes.
     String dbUnit = e?['unit_type']?.toString() ?? 'g';
@@ -1083,6 +1309,38 @@ class _SupplementDialogState extends State<_SupplementDialog> {
 
   double _d(String v) => double.tryParse(v.trim().replaceAll(',', '.')) ?? 0.0;
 
+  Future<void> _scanBarcodeAndFill() async {
+    if (_barcodeBusy || _saving) return;
+    final res = await Navigator.of(context).push<Map<String, dynamic>?>(
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+    );
+    if (res == null || !mounted) return;
+    final code = (res['barcode'] ?? '').toString().trim();
+    if (code.isEmpty) return;
+
+    setState(() => _barcodeBusy = true);
+    try {
+      final off = await OpenFoodFactsService.fetchByBarcode(code);
+      if (!mounted) return;
+      _barcode = code;
+      if (off != null) {
+        final name = (off['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) _name.text = name;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Auto-filled from barcode.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Product not found. Please enter manually.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _barcodeBusy = false);
+    }
+  }
+
   Future<void> _save() async {
     final form = _formKey.currentState;
     if (form == null || !form.validate()) return;
@@ -1092,6 +1350,7 @@ class _SupplementDialogState extends State<_SupplementDialog> {
       if (id != null && id.toString().isNotEmpty) {
         await _client.from('supplements').update({
           'name': _name.text.trim(),
+          if ((_barcode ?? '').trim().isNotEmpty) 'barcode': _barcode,
           'is_gluten_free': _glutenFree,
           'low_glycemic_index': _lowGlycemicIndex,
           'allergen_level': _allergenLevel,
@@ -1102,6 +1361,7 @@ class _SupplementDialogState extends State<_SupplementDialog> {
           'name': _name.text.trim(),
           'daily_dosage': _d(_dosage.text),
           'unit_type': _unit,
+          if ((_barcode ?? '').trim().isNotEmpty) 'barcode': _barcode,
           'is_gluten_free': _glutenFree,
           'low_glycemic_index': _lowGlycemicIndex,
           'allergen_level': _allergenLevel,
@@ -1123,6 +1383,7 @@ class _SupplementDialogState extends State<_SupplementDialog> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
+    const gold = Color(0xFFCBAB67);
     final title = widget.existing == null ? 'ADD SUPPLEMENT' : 'EDIT SUPPLEMENT';
     return AlertDialog(
       backgroundColor: bg,
@@ -1137,9 +1398,27 @@ class _SupplementDialogState extends State<_SupplementDialog> {
               TextFormField(
                 controller: _name,
                 style: const TextStyle(fontFamily: 'monospace'),
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  suffixIcon: IconButton(
+                    tooltip: 'Scan barcode',
+                    onPressed: _barcodeBusy ? null : _scanBarcodeAndFill,
+                    icon: const Icon(Icons.qr_code_scanner),
+                    color: gold,
+                  ),
+                ),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
+              if ((_barcode ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                TextFormField(
+                  initialValue: _barcode,
+                  readOnly: true,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                  decoration:
+                      const InputDecoration(labelText: 'Barcode (read-only)'),
+                ),
+              ],
               const SizedBox(height: 10),
               TextFormField(
                 controller: _dosage,
@@ -1202,6 +1481,156 @@ class _SupplementDialogState extends State<_SupplementDialog> {
               ),
             ],
           ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+          child: const Text('CANCEL'),
+        ),
+        TextButton(
+          onPressed: _saving ? null : _save,
+          child: _saving ? const Text('...') : const Text('SAVE'),
+        ),
+      ],
+    );
+  }
+}
+
+class _MedicationDialog extends StatefulWidget {
+  final Map<String, dynamic>? existing;
+
+  const _MedicationDialog({this.existing});
+
+  @override
+  State<_MedicationDialog> createState() => _MedicationDialogState();
+}
+
+class _MedicationDialogState extends State<_MedicationDialog> {
+  final _client = Supabase.instance.client;
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  String? _barcode;
+  bool _saving = false;
+  bool _barcodeBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: (widget.existing?['name'] ?? '').toString());
+    _barcode = (widget.existing?['barcode'] ?? '').toString().trim().isEmpty
+        ? null
+        : (widget.existing?['barcode'] ?? '').toString().trim();
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scanBarcodeAndFill() async {
+    if (_barcodeBusy || _saving) return;
+    final res = await Navigator.of(context).push<Map<String, dynamic>?>(
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+    );
+    if (res == null || !mounted) return;
+    final code = (res['barcode'] ?? '').toString().trim();
+    if (code.isEmpty) return;
+
+    setState(() => _barcodeBusy = true);
+    try {
+      final off = await OpenFoodFactsService.fetchByBarcode(code);
+      if (!mounted) return;
+      _barcode = code;
+      if (off != null) {
+        final name = (off['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) _name.text = name;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Auto-filled from barcode.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Product not found. Please enter manually.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _barcodeBusy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) return;
+    setState(() => _saving = true);
+    try {
+      final id = widget.existing?['id'];
+      if (id != null && id.toString().isNotEmpty) {
+        await _client.from('medications').update({
+          'name': _name.text.trim(),
+          if ((_barcode ?? '').trim().isNotEmpty) 'barcode': _barcode,
+        }).eq('id', id);
+      } else {
+        final uid = _client.auth.currentUser?.id;
+        await _client.from('medications').insert({
+          'name': _name.text.trim(),
+          if ((_barcode ?? '').trim().isNotEmpty) 'barcode': _barcode,
+          'user_id': uid,
+        });
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      _showSaveError(context, e);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const bg = Color(0xFF050510);
+    const cyan = Color(0xFF00F3FF);
+    const gold = Color(0xFFCBAB67);
+    final title = widget.existing == null ? 'ADD MED' : 'EDIT MED';
+    return AlertDialog(
+      backgroundColor: bg,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      title: Text(title, style: const TextStyle(color: cyan, fontFamily: 'monospace')),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _name,
+              style: const TextStyle(fontFamily: 'monospace'),
+              decoration: InputDecoration(
+                labelText: 'Name',
+                suffixIcon: IconButton(
+                  tooltip: 'Scan barcode',
+                  onPressed: _barcodeBusy ? null : _scanBarcodeAndFill,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  color: gold,
+                ),
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Required' : null,
+            ),
+            if ((_barcode ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              TextFormField(
+                initialValue: _barcode,
+                readOnly: true,
+                style: const TextStyle(fontFamily: 'monospace'),
+                decoration:
+                    const InputDecoration(labelText: 'Barcode (read-only)'),
+              ),
+            ],
+          ],
         ),
       ),
       actions: [

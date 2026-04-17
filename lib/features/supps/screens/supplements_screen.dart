@@ -16,8 +16,14 @@ import '../../../core/settings/unit_options.dart';
 class SupplementsScreen extends StatefulWidget {
   final String? focusLogId;
   final DateTime? focusDate;
+  final bool embedded;
 
-  const SupplementsScreen({super.key, this.focusLogId, this.focusDate});
+  const SupplementsScreen({
+    super.key,
+    this.focusLogId,
+    this.focusDate,
+    this.embedded = false,
+  });
 
   @override
   State<SupplementsScreen> createState() => _SupplementsScreenState();
@@ -630,27 +636,29 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        title: Text(l10n.screenSupps),
-        actions: [
-          IconButton(
-            tooltip: l10n.addSupplementToLibrary,
-            onPressed: () async {
-              final changed = await showDialog<bool>(
-                context: context,
-                builder: (_) => const _NewSupplementDialog(),
-              );
-              if (changed == true && mounted) await _fetchData();
-            },
-            icon: const Icon(Icons.playlist_add),
-          ),
-          IconButton(
-            onPressed: _fetchData,
-            tooltip: l10n.refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(l10n.screenSupps),
+              actions: [
+                IconButton(
+                  tooltip: l10n.addSupplementToLibrary,
+                  onPressed: () async {
+                    final changed = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => const _NewSupplementDialog(),
+                    );
+                    if (changed == true && mounted) await _fetchData();
+                  },
+                  icon: const Icon(Icons.playlist_add),
+                ),
+                IconButton(
+                  onPressed: _fetchData,
+                  tooltip: l10n.refresh,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
       body: Column(
         children: [
           // TOP: Date Header

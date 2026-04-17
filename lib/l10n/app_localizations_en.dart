@@ -714,4 +714,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dialogSaving => '…';
+
+  @override
+  String get intakeAddModeLogNow => 'LOG NOW';
+
+  @override
+  String get intakeAddModePlan => 'PLAN';
+
+  @override
+  String get intakeAddModeHint => 'Planned rows stay open until you tap TAKE.';
+
+  @override
+  String notificationTimeForIntake(String name) {
+    return 'Time for your intake: $name';
+  }
 }

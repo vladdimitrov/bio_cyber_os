@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
+import '../../food/screens/barcode_scanner_screen.dart';
+
 class AddFoodScreen extends StatefulWidget {
   const AddFoodScreen({super.key});
 
@@ -78,6 +80,45 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     }
   }
 
+  Future<void> _scanBarcodeAndFill() async {
+    final data = await Navigator.of(context).push<Map<String, dynamic>?>(
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+    );
+    if (data == null || !mounted) return;
+
+    final name = (data['name'] ?? '').toString().trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Product not found. Please enter manually.')),
+      );
+      return;
+    }
+
+    String fmtNum(dynamic v) {
+      if (v == null) return '';
+      if (v is num) {
+        final d = v.toDouble();
+        return d == d.roundToDouble() ? d.toInt().toString() : d.toStringAsFixed(1);
+      }
+      final d = double.tryParse(v.toString());
+      if (d == null) return '';
+      return d == d.roundToDouble() ? d.toInt().toString() : d.toStringAsFixed(1);
+    }
+
+    setState(() {
+      _nameController.text = name;
+      _caloriesController.text = fmtNum(data['calories']);
+      _proteinController.text = fmtNum(data['proteins']);
+      _carbsController.text = fmtNum(data['carbs']);
+      _fatsController.text = fmtNum(data['fats']);
+      // Fiber is not provided by the task; keep as-is.
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Auto-filled from barcode (per 100g).')),
+    );
+  }
+
   InputDecoration _decoration(String label) {
     const cyan = Color(0xFF00F3FF);
     return InputDecoration(
@@ -108,7 +149,14 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                       controller: _nameController,
                       textInputAction: TextInputAction.next,
                       style: const TextStyle(fontFamily: 'monospace'),
-                      decoration: _decoration('Name'),
+                      decoration: _decoration('Name').copyWith(
+                        suffixIcon: IconButton(
+                          tooltip: 'Scan barcode',
+                          onPressed: _saving ? null : _scanBarcodeAndFill,
+                          icon: const Icon(Icons.qr_code_scanner),
+                        ),
+                        suffixIconColor: const Color(0xFFCBAB67),
+                      ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) return 'Required';
                         return null;

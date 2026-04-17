@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
@@ -22,8 +25,14 @@ import '../../../core/settings/unit_converter.dart';
 class FuelDashboardScreen extends StatefulWidget {
   final String? focusLogId;
   final DateTime? focusDate;
+  final bool isActive;
 
-  const FuelDashboardScreen({super.key, this.focusLogId, this.focusDate});
+  const FuelDashboardScreen({
+    super.key,
+    this.focusLogId,
+    this.focusDate,
+    this.isActive = true,
+  });
 
   @override
   State<FuelDashboardScreen> createState() => _FuelDashboardScreenState();
@@ -43,6 +52,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   String? _error;
 
   RealtimeChannel? _todayLogsChannel;
+  RealtimeChannel? _targetsChannel;
+
+  bool _autoRefreshingTargets = false;
 
   /// Consumed (`is_consumed` true) — "Current" chart only.
   double _todayProtein = 0;
@@ -76,12 +88,17 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   void initState() {
     super.initState();
     _loadTargets();
+    _subscribeTargets();
     _initDayTotals();
   }
 
   @override
   void didUpdateWidget(covariant FuelDashboardScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      // `IndexedStack` keeps this screen mounted; refresh when it becomes visible.
+      _refreshTargetsWithIndicator();
+    }
     if (widget.focusDate != null && widget.focusDate != oldWidget.focusDate) {
       final d = widget.focusDate!;
       _selectedDay = DateTime(d.year, d.month, d.day);
@@ -115,7 +132,50 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   @override
   void dispose() {
     _todayLogsChannel?.unsubscribe();
+    _targetsChannel?.unsubscribe();
     super.dispose();
+  }
+
+  void _subscribeTargets() {
+    _targetsChannel?.unsubscribe();
+    _targetsChannel = null;
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return;
+
+    _targetsChannel = _client.channel('user-targets-$uid');
+    _targetsChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'user_targets',
+          callback: (payload) {
+            // Best-effort: only react to the current user.
+            try {
+              final next = payload.newRecord.isNotEmpty
+                  ? payload.newRecord
+                  : payload.oldRecord;
+              final userId = next['user_id']?.toString();
+              if (userId != null && userId.isNotEmpty && userId != uid) return;
+            } catch (_) {
+              // ignore; still refresh targets
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              _refreshTargetsWithIndicator();
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _refreshTargetsWithIndicator() async {
+    if (_autoRefreshingTargets) return;
+    setState(() => _autoRefreshingTargets = true);
+    try {
+      await _loadTargets();
+    } finally {
+      if (mounted) setState(() => _autoRefreshingTargets = false);
+    }
   }
 
   void _setStatePostFrame(VoidCallback fn) {
@@ -751,11 +811,6 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
 
   /// Single renderer for every meal section (Breakfast, Lunch, Dinner, Snack, …).
   Widget _buildFoodItemRow(BuildContext context, Map<String, dynamic> item) {
-    // ignore: avoid_print
-    print(
-      'RENDERING ITEM: ${item['name']} | Status: ${item['status']} | Consumed: ${item['consumed_at']}',
-    );
-
     final l10n = context.l10n;
     final record = item['record'] as _DailyRecord;
     final showTake = item['consumed_at'] == null;
@@ -1001,27 +1056,45 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
 
     return Scaffold(
       backgroundColor: bg,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(l10n.screenFuelLog),
         actions: [
-          IconButton(
-            onPressed: _refreshSelectedDay,
-            tooltip: l10n.refresh,
-            icon: const Icon(Icons.refresh),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            child: _autoRefreshingTargets
+                ? const Padding(
+                    key: ValueKey('refreshing'),
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : IconButton(
+                    key: const ValueKey('refresh'),
+                    onPressed: _refreshSelectedDay,
+                    tooltip: l10n.refresh,
+                    icon: const Icon(Icons.refresh),
+                  ),
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SelectableText(
-                    _error!,
-                    style: const TextStyle(color: cyan),
-                  ),
-                )
-              : Column(
+      body: SafeArea(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SelectableText(
+                      _error!,
+                      style: const TextStyle(color: cyan),
+                    ),
+                  )
+                : Column(
                   children: [
                     Container(
                       width: double.infinity,
@@ -1207,6 +1280,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                     ),
                   ],
                 ),
+      ),
     );
   }
 }
@@ -1369,8 +1443,8 @@ class _MealLogSectionState extends State<_MealLogSection> {
       text: TextSpan(text: title.toUpperCase(), style: titleStyle),
       textDirection: TextDirection.ltr,
     )..layout();
-    // notch includes title + detail-toggle icon spacing
-    final notchW = tp.width + 26 + 34;
+    // notch includes title + detail-toggle icon spacing (48px tap target)
+    final notchW = tp.width + 26 + 52;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1416,16 +1490,17 @@ class _MealLogSectionState extends State<_MealLogSection> {
                               IconButton(
                                 onPressed: () =>
                                     setState(() => _detailed = !_detailed),
-                                padding: EdgeInsets.zero,
+                                padding: const EdgeInsets.all(8),
+                                iconSize: 28,
                                 constraints: const BoxConstraints(
-                                  minWidth: 32,
-                                  minHeight: 32,
+                                  minWidth: 48,
+                                  minHeight: 48,
                                 ),
                                 icon: Icon(
                                   _detailed
                                       ? Icons.visibility_off
                                       : Icons.visibility,
-                                  size: 20,
+                                  size: 28,
                                   color: _detailed
                                       ? const Color(0xFF00F3FF)
                                       : const Color(0xFF88CCFF),
@@ -1859,6 +1934,215 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
     _editMinutesBeforeCtrl.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _openBarcodeFlow() async {
+    if (!mounted) return;
+    final code = await Navigator.of(context).push<String?>(
+      MaterialPageRoute(
+        builder: (_) => const _BarcodeScannerScreen(),
+      ),
+    );
+    final barcode = (code ?? '').trim();
+    if (barcode.isEmpty || !mounted) return;
+
+    try {
+      final prod = await _fetchOpenFoodFacts(barcode);
+      if (prod == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Product not found. Please enter manually.'),
+          ),
+        );
+        return;
+      }
+
+      final created = await showDialog<_FoodPick?>(
+        context: context,
+        builder: (_) => _OffAddIngredientDialog(product: prod),
+      );
+      if (created == null) return;
+
+      // Update local list and focus search.
+      await _loadAll();
+      if (!mounted) return;
+      _controller.text = created.name;
+      _applyFilter(created.name);
+
+      // Immediately continue into the normal grams/reminder flow.
+      await _handleFoodPickTap(created);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Barcode lookup failed: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  Future<_OffProduct?> _fetchOpenFoodFacts(String barcode) async {
+    final uri = Uri.parse(
+      'https://world.openfoodfacts.org/api/v2/product/$barcode.json',
+    );
+    final res = await http.get(uri).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return null;
+    final json = jsonDecode(res.body);
+    if (json is! Map<String, dynamic>) return null;
+    final status = json['status'];
+    if (status is num && status.toInt() != 1) return null;
+    if (status is String && status.trim() != '1') return null;
+    final product = json['product'];
+    if (product is! Map<String, dynamic>) return null;
+
+    String s(dynamic v) => (v ?? '').toString().trim();
+    double d(dynamic v) {
+      if (v == null) return 0.0;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString()) ?? 0.0;
+    }
+
+    final name = s(product['product_name']).isNotEmpty
+        ? s(product['product_name'])
+        : s(product['generic_name']);
+    if (name.trim().isEmpty) return null;
+    final nutr = product['nutriments'];
+    final nutriments =
+        (nutr is Map<String, dynamic>) ? nutr : const <String, dynamic>{};
+
+    final kcal = d(nutriments['energy-kcal_100g']);
+    final p = d(nutriments['proteins_100g']);
+    final c = d(nutriments['carbohydrates_100g']);
+    final f = d(nutriments['fat_100g']);
+
+    return _OffProduct(
+      barcode: barcode,
+      name: name.trim(),
+      caloriesPer100g: kcal,
+      proteinPer100g: p,
+      carbsPer100g: c,
+      fatPer100g: f,
+    );
+  }
+
+  Future<void> _handleFoodPickTap(_FoodPick item) async {
+    final picked = await _promptGrams(item.name);
+    if (picked == null) return;
+    final grams = picked.grams;
+    final unit = picked.unit;
+
+    final consumed = !widget.planOnly;
+    final base = DateTime.tryParse(widget.consumedAtIsoUtc)?.toLocal();
+    final local = base ?? DateTime.now();
+
+    final intakeTod = picked.intakeTime ?? TimeOfDay.fromDateTime(local);
+    final intakeLocal = DateTime(
+      local.year,
+      local.month,
+      local.day,
+      intakeTod.hour,
+      intakeTod.minute,
+    );
+
+    DateTime? reminderLocal;
+    int? reminderOffsetMinutes;
+    if (picked.reminder.enabled) {
+      if (picked.reminder.mode == ReminderMode.atConsumptionTime) {
+        reminderLocal = intakeLocal;
+        reminderOffsetMinutes = 0;
+      } else {
+        final off = picked.reminder.offsetMinutes;
+        reminderLocal = intakeLocal.subtract(Duration(minutes: off));
+        reminderOffsetMinutes = off;
+      }
+    }
+
+    try {
+      final uid = _client.auth.currentUser?.id;
+      if (uid == null) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.msgSignInLogFood),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+
+      final n = picked.repeatDays <= 0 ? 1 : picked.repeatDays;
+      final rows = <Map<String, dynamic>>[];
+      final reminderLocals = <DateTime?>[];
+
+      for (var i = 0; i < n; i++) {
+        final shift = Duration(days: i);
+        final intakeI = intakeLocal.add(shift);
+        final reminderI = reminderLocal?.add(shift);
+        final isConsumedI = i == 0 ? consumed : false;
+
+        final extraI = reminderI == null
+            ? const <String, dynamic>{}
+            : <String, dynamic>{
+                'reminder_at': reminderI.toUtc().toIso8601String(),
+                'reminder_offset_minutes': reminderOffsetMinutes,
+              };
+
+        final payload = <String, dynamic>{
+          'user_id': uid,
+          'created_at': intakeI.toUtc().toIso8601String(),
+          'scheduled_at': intakeI.toUtc().toIso8601String(),
+          if (item.type == _FoodType.ingredient) 'ingredient_id': item.id else 'recipe_id': item.id,
+          'amount_grams': grams,
+          'unit': unit,
+          'meal_type': widget.mealType,
+          'consumed_at': intakeI.toUtc().toIso8601String(),
+          'is_consumed': isConsumedI,
+          ...extraI,
+        };
+        rows.add(payload);
+        reminderLocals.add(reminderI);
+      }
+
+      final inserted = await _client.from(widget.logsTable).insert(rows).select('id');
+      final insertedList = (inserted as List).cast<Map<String, dynamic>>();
+
+      for (var i = 0; i < insertedList.length; i++) {
+        final newId = (insertedList[i]['id'] ?? '').toString().trim();
+        final rLocal = (i < reminderLocals.length) ? reminderLocals[i] : null;
+        if (rLocal != null && newId.isNotEmpty) {
+          final target = intakeLocal.add(Duration(days: i));
+          await NotificationService.scheduleByKey(
+            key: 'daily_logs:$newId',
+            title: context.l10n.reminderTitleMeal(item.name),
+            body: context.l10n.reminderBody,
+            whenLocal: rLocal,
+            payload: {
+              'item_type': 'food',
+              'item_id': newId,
+              'target_date':
+                  '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}',
+            },
+          );
+        }
+      }
+
+      if (!context.mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('FOOD LOG FLOW ERROR: $e');
+      // ignore: avoid_print
+      print('STACKTRACE: $st');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(supabaseWriteErrorMessage(e)),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
   }
 
   Future<void> _loadAll() async {
@@ -2306,6 +2590,13 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Scan barcode',
+                  onPressed: _openBarcodeFlow,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  color: const Color(0xFFCBAB67),
+                ),
               ],
             ),
           ),
@@ -2382,149 +2673,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                                     ],
                                   ],
                                 ),
-                                onTap: () async {
-                                  final picked = await _promptGrams(item.name);
-                                  if (picked == null) return;
-                                  final grams = picked.grams;
-                                  final unit = picked.unit;
-
-                                  final consumed = !widget.planOnly;
-                                  final base =
-                                      DateTime.tryParse(widget.consumedAtIsoUtc)
-                                          ?.toLocal();
-                                  final local = base ?? DateTime.now();
-
-                                  final intakeTod = picked.intakeTime ??
-                                      TimeOfDay.fromDateTime(local);
-                                  final intakeLocal = DateTime(
-                                    local.year,
-                                    local.month,
-                                    local.day,
-                                    intakeTod.hour,
-                                    intakeTod.minute,
-                                  );
-
-                                  DateTime? reminderLocal;
-                                  int? reminderOffsetMinutes;
-                                  if (picked.reminder.enabled) {
-                                    if (picked.reminder.mode ==
-                                        ReminderMode.atConsumptionTime) {
-                                      reminderLocal = intakeLocal;
-                                      reminderOffsetMinutes = 0;
-                                    } else {
-                                      final off = picked.reminder.offsetMinutes;
-                                      reminderLocal = intakeLocal.subtract(
-                                        Duration(minutes: off),
-                                      );
-                                      reminderOffsetMinutes = off;
-                                    }
-                                  }
-
-                                  try {
-                                    final uid = _client.auth.currentUser?.id;
-                                    if (uid == null) {
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            context.l10n.msgSignInLogFood,
-                                          ),
-                                          backgroundColor: Colors.redAccent,
-                                        ),
-                                      );
-                                      return;
-                                    }
-
-                                    final n = picked.repeatDays <= 0 ? 1 : picked.repeatDays;
-                                    final rows = <Map<String, dynamic>>[];
-                                    final reminderLocals = <DateTime?>[];
-
-                                    for (var i = 0; i < n; i++) {
-                                      final shift = Duration(days: i);
-                                      final intakeI = intakeLocal.add(shift);
-                                      final reminderI = reminderLocal?.add(shift);
-                                      final isConsumedI = i == 0 ? consumed : false;
-
-                                      final extraI = reminderI == null
-                                          ? const <String, dynamic>{}
-                                          : <String, dynamic>{
-                                              'reminder_at': reminderI
-                                                  .toUtc()
-                                                  .toIso8601String(),
-                                              'reminder_offset_minutes':
-                                                  reminderOffsetMinutes,
-                                            };
-
-                                      final payload = <String, dynamic>{
-                                        'user_id': uid,
-                                        'created_at':
-                                            intakeI.toUtc().toIso8601String(),
-                                        'scheduled_at':
-                                            intakeI.toUtc().toIso8601String(),
-                                        if (item.type == _FoodType.ingredient)
-                                          'ingredient_id': item.id
-                                        else
-                                          'recipe_id': item.id,
-                                        'amount_grams': grams,
-                                        'unit': unit,
-                                        'meal_type': widget.mealType,
-                                        'consumed_at':
-                                            intakeI.toUtc().toIso8601String(),
-                                        'is_consumed': isConsumedI,
-                                        ...extraI,
-                                      };
-                                      rows.add(payload);
-                                      reminderLocals.add(reminderI);
-                                    }
-
-                                    final inserted = await _client
-                                        .from(widget.logsTable)
-                                        .insert(rows)
-                                        .select('id');
-                                    final insertedList =
-                                        (inserted as List).cast<Map<String, dynamic>>();
-
-                                    for (var i = 0; i < insertedList.length; i++) {
-                                      final newId =
-                                          (insertedList[i]['id'] ?? '').toString().trim();
-                                      final rLocal = (i < reminderLocals.length)
-                                          ? reminderLocals[i]
-                                          : null;
-                                      if (rLocal != null && newId.isNotEmpty) {
-                                        final target = intakeLocal.add(Duration(days: i));
-                                        await NotificationService.scheduleByKey(
-                                          key: 'daily_logs:$newId',
-                                          title: context.l10n.reminderTitleMeal(item.name),
-                                          body: context.l10n.reminderBody,
-                                          whenLocal: rLocal,
-                                          payload: {
-                                            'item_type': 'food',
-                                            'item_id': newId,
-                                            'target_date':
-                                                '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}',
-                                          },
-                                        );
-                                      }
-                                    }
-
-                                    if (!context.mounted) return;
-                                    Navigator.of(context).pop(true);
-                                  } catch (e, st) {
-                                    // ignore: avoid_print
-                                    print('FOOD LOG FLOW ERROR: $e');
-                                    // ignore: avoid_print
-                                    print('STACKTRACE: $st');
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          supabaseWriteErrorMessage(e),
-                                        ),
-                                        backgroundColor: Colors.redAccent,
-                                      ),
-                                    );
-                                  }
-                                },
+                                onTap: () async => _handleFoodPickTap(item),
                               );
                             },
                           ),
@@ -2593,22 +2742,6 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
 }
 
 // (legacy picker removed; logging happens inside _FoodLogSheet)
-
-class _NeonDivider extends StatelessWidget {
-  const _NeonDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    const cyan = Color(0xFF00F3FF);
-    return Container(
-      height: 1,
-      decoration: const BoxDecoration(
-        boxShadow: [BoxShadow(color: Color(0x3300F3FF), blurRadius: 10)],
-        color: cyan,
-      ),
-    );
-  }
-}
 class _DailyRecord {
   final String id;
   final String mealType;
@@ -2814,6 +2947,419 @@ class _Totals {
   });
 }
 
+class _OffProduct {
+  final String barcode;
+  final String name;
+  final double caloriesPer100g;
+  final double proteinPer100g;
+  final double carbsPer100g;
+  final double fatPer100g;
+
+  const _OffProduct({
+    required this.barcode,
+    required this.name,
+    required this.caloriesPer100g,
+    required this.proteinPer100g,
+    required this.carbsPer100g,
+    required this.fatPer100g,
+  });
+}
+
+class _BarcodeScannerScreen extends StatefulWidget {
+  const _BarcodeScannerScreen();
+
+  @override
+  State<_BarcodeScannerScreen> createState() => _BarcodeScannerScreenState();
+}
+
+class _BarcodeScannerScreenState extends State<_BarcodeScannerScreen> {
+  bool _popped = false;
+  final _controller = MobileScannerController(
+    facing: CameraFacing.back,
+    detectionSpeed: DetectionSpeed.normal,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _popOnce(String code) {
+    if (_popped) return;
+    _popped = true;
+    Navigator.of(context).pop(code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const bg = Color(0xFF050510);
+    const cyan = Color(0xFF00F3FF);
+    const gold = Color(0xFFCBAB67);
+
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: const Text(
+          'SCAN BARCODE',
+          style: TextStyle(fontFamily: 'monospace'),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Toggle torch',
+            onPressed: () => _controller.toggleTorch(),
+            icon: const Icon(Icons.flash_on),
+            color: gold,
+          ),
+          IconButton(
+            tooltip: 'Switch camera',
+            onPressed: () => _controller.switchCamera(),
+            icon: const Icon(Icons.cameraswitch),
+            color: cyan,
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: _controller,
+            onDetect: (capture) {
+              if (_popped) return;
+              final codes = capture.barcodes;
+              if (codes.isEmpty) return;
+              final raw = codes.first.rawValue ?? '';
+              final code = raw.trim();
+              if (code.isEmpty) return;
+              _popOnce(code);
+            },
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: const BoxDecoration(
+                color: Color(0xAA050510),
+                border: Border(top: BorderSide(color: cyan, width: 2)),
+              ),
+              child: const Text(
+                'Point the camera at a barcode.\nWe will fetch the product from Open Food Facts.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: cyan,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OffAddIngredientDialog extends StatefulWidget {
+  final _OffProduct product;
+
+  const _OffAddIngredientDialog({required this.product});
+
+  @override
+  State<_OffAddIngredientDialog> createState() => _OffAddIngredientDialogState();
+}
+
+class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
+  final _client = Supabase.instance.client;
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _kcal;
+  late final TextEditingController _p;
+  late final TextEditingController _c;
+  late final TextEditingController _f;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.product;
+    _name = TextEditingController(text: p.name);
+    _kcal = TextEditingController(
+      text: p.caloriesPer100g == p.caloriesPer100g.roundToDouble()
+          ? p.caloriesPer100g.toInt().toString()
+          : p.caloriesPer100g.toStringAsFixed(1),
+    );
+    _p = TextEditingController(text: p.proteinPer100g.toStringAsFixed(1));
+    _c = TextEditingController(text: p.carbsPer100g.toStringAsFixed(1));
+    _f = TextEditingController(text: p.fatPer100g.toStringAsFixed(1));
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _kcal.dispose();
+    _p.dispose();
+    _c.dispose();
+    _f.dispose();
+    super.dispose();
+  }
+
+  double _d(String v) => double.tryParse(v.trim().replaceAll(',', '.')) ?? 0.0;
+
+  Future<void> _save() async {
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) return;
+    if (_saving) return;
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.msgSignInSave)),
+      );
+      return;
+    }
+
+    final displayName = _name.text.trim();
+    if (!mounted) return;
+    final add = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        const bg = Color(0xFF050510);
+        const cyan = Color(0xFF00F3FF);
+        const gold = Color(0xFFCBAB67);
+        return AlertDialog(
+          backgroundColor: bg,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          title: Text(
+            'ADD TO LIBRARY?',
+            style: TextStyle(color: gold, fontFamily: 'monospace'),
+          ),
+          content: Text(
+            'Item Found: $displayName\n\nAdd this ingredient to your library?',
+            style: const TextStyle(
+              color: cyan,
+              fontFamily: 'monospace',
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text(
+                'CANCEL',
+                style: TextStyle(
+                  color: Color(0xFF88CCFF),
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text(
+                'ADD',
+                style: TextStyle(
+                  color: gold,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (add != true) return;
+
+    setState(() => _saving = true);
+    try {
+      final payload = <String, dynamic>{
+        'name': _name.text.trim(),
+        'calories_per_100g': _d(_kcal.text),
+        'protein_per_100g': _d(_p.text),
+        'carbs_per_100g': _d(_c.text),
+        'fat_per_100g': _d(_f.text),
+        'is_gluten_free': false,
+        'glycemic_index': null,
+        'allergen_level': 1,
+        'user_id': uid,
+      };
+
+      final inserted = await _client
+          .from('ingredients')
+          .insert(payload)
+          .select('id,name,calories_per_100g,protein_per_100g,carbs_per_100g,fat_per_100g');
+      final rows = (inserted as List).cast<Map<String, dynamic>>();
+      if (rows.isEmpty) {
+        throw Exception('Insert returned no rows');
+      }
+      final r = rows.first;
+      final id = (r['id'] ?? '').toString().trim();
+      final name = (r['name'] ?? '').toString().trim();
+      if (id.isEmpty || name.isEmpty) {
+        throw Exception('Insert failed');
+      }
+
+      double asDouble(dynamic v) {
+        if (v == null) return 0.0;
+        if (v is num) return v.toDouble();
+        return double.tryParse(v.toString()) ?? 0.0;
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop(
+        _FoodPick(
+          id: id,
+          name: name,
+          type: _FoodType.ingredient,
+          caloriesPer100g: asDouble(r['calories_per_100g']),
+          proteinPer100g: asDouble(r['protein_per_100g']),
+          carbsPer100g: asDouble(r['carbs_per_100g']),
+          fatPer100g: asDouble(r['fat_per_100g']),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(supabaseWriteErrorMessage(e)),
+          backgroundColor: Colors.redAccent,
+          showCloseIcon: true,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  InputDecoration _dec(String label, Color accent) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: accent, fontFamily: 'monospace'),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: accent, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: accent, width: 1.5),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const bg = Color(0xFF050510);
+    const cyan = Color(0xFF00F3FF);
+    const gold = Color(0xFFCBAB67);
+    final accent = gold;
+
+    return AlertDialog(
+      backgroundColor: bg,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      title: Text(
+        'ADD FOOD (BARCODE)',
+        style: TextStyle(color: accent, fontFamily: 'monospace'),
+      ),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Barcode: ${widget.product.barcode}',
+                style: const TextStyle(
+                  color: Color(0x8800F3FF),
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _name,
+                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                decoration: _dec('Product name', accent),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Per 100g',
+                style: TextStyle(
+                  color: cyan.withValues(alpha: 0.9),
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _kcal,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                decoration: _dec('Energy (kcal)', accent),
+                validator: (v) =>
+                    double.tryParse((v ?? '').trim().replaceAll(',', '.')) ==
+                            null
+                        ? 'Number'
+                        : null,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _p,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      style:
+                          const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      decoration: _dec('Protein (g)', accent),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _c,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      style:
+                          const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      decoration: _dec('Carbs (g)', accent),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _f,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                decoration: _dec('Fats (g)', accent),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(null),
+          child: Text(context.l10n.cancel.toUpperCase()),
+        ),
+        TextButton(
+          onPressed: _saving ? null : _save,
+          child: Text(context.l10n.save.toUpperCase()),
+        ),
+      ],
+    );
+  }
+}
+
 enum _EditReminderMode { none, specific, minutesBefore }
 
 class _EditReminderSection extends StatelessWidget {
@@ -2823,7 +3369,6 @@ class _EditReminderSection extends StatelessWidget {
   final VoidCallback onPickSpecific;
   final TextEditingController minutesBeforeController;
   final ValueChanged<int> onMinutesChanged;
-  final List<int> quickOffsets;
 
   const _EditReminderSection({
     required this.mode,
@@ -2832,13 +3377,13 @@ class _EditReminderSection extends StatelessWidget {
     required this.onPickSpecific,
     required this.minutesBeforeController,
     required this.onMinutesChanged,
-    this.quickOffsets = const [5, 15, 30, 60],
   });
 
   @override
   Widget build(BuildContext context) {
     const cyan = Color(0xFF00F3FF);
     final loc = context.l10n;
+    const quickOffsets = [5, 15, 30, 60];
     final specificLabel = specificTime == null
         ? loc.pickTime
         : '${specificTime!.hour.toString().padLeft(2, '0')}:${specificTime!.minute.toString().padLeft(2, '0')}';

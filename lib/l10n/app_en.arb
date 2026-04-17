@@ -355,5 +355,14 @@
     }
   },
   "libraryNoDefaultDose": "No default dose (tap to enter now)",
-  "dialogSaving": "…"
+  "dialogSaving": "…",
+  "intakeAddModeLogNow": "LOG NOW",
+  "intakeAddModePlan": "PLAN",
+  "intakeAddModeHint": "Planned rows stay open until you tap TAKE.",
+  "notificationTimeForIntake": "Time for your intake: {name}",
+  "@notificationTimeForIntake": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
 }

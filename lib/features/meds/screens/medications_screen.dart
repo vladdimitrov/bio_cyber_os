@@ -16,8 +16,14 @@ import '../../../core/settings/unit_options.dart';
 class MedicationsScreen extends StatefulWidget {
   final String? focusLogId;
   final DateTime? focusDate;
+  final bool embedded;
 
-  const MedicationsScreen({super.key, this.focusLogId, this.focusDate});
+  const MedicationsScreen({
+    super.key,
+    this.focusLogId,
+    this.focusDate,
+    this.embedded = false,
+  });
 
   @override
   State<MedicationsScreen> createState() => _MedicationsScreenState();
@@ -643,21 +649,23 @@ class _MedicationsScreenState extends State<MedicationsScreen>
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        title: Text(l10n.screenMeds),
-        actions: [
-          IconButton(
-            tooltip: l10n.addMedicationToLibrary,
-            onPressed: _addMedicationToLibrary,
-            icon: const Icon(Icons.playlist_add),
-          ),
-          IconButton(
-            tooltip: l10n.refresh,
-            onPressed: _fetchData,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(l10n.screenMeds),
+              actions: [
+                IconButton(
+                  tooltip: l10n.addMedicationToLibrary,
+                  onPressed: _addMedicationToLibrary,
+                  icon: const Icon(Icons.playlist_add),
+                ),
+                IconButton(
+                  tooltip: l10n.refresh,
+                  onPressed: _fetchData,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
       body: Column(
         children: [
           Container(

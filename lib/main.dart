@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,17 +17,27 @@ import 'core/settings/locale_settings.dart';
 import 'core/settings/measurement_settings.dart';
 import 'core/settings/notification_settings.dart';
 import 'core/settings/profile_settings.dart';
+import 'app_shell.dart';
 import 'features/auth/screens/splash_route.dart';
+import 'features/auth/screens/auth_screen.dart';
+
+// Global navigator for deterministic flows (biometric vault).
+final GlobalKey<NavigatorState> navigatorKey = AppNavigator.key;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AgentDebugLog.ensureInitialized();
+  debugPrint('DEBUG: App started');
+
+  try {
+    await AgentDebugLog.ensureInitialized();
+  } catch (e, st) {
+    debugPrint('DEBUG: AgentDebugLog.ensureInitialized failed: $e $st');
+  }
 
   // Avoid hard-crashing in debug/web when --dart-define is missing.
   // Instead, show a clear configuration screen.
   if (AppConfig.supabaseUrl.isEmpty || AppConfig.supabaseAnonKey.isEmpty) {
-    // ignore: avoid_print
-    print(
+    debugPrint(
       'DEBUG: Missing SUPABASE_URL / SUPABASE_ANON_KEY. '
       'Run with --dart-define SUPABASE_URL=... and SUPABASE_ANON_KEY=...',
     );
@@ -32,55 +45,112 @@ Future<void> main() async {
     return;
   }
 
-  await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
-    anonKey: AppConfig.supabaseAnonKey,
-    authOptions: FlutterAuthClientOptions(
-      localStorage: SupabaseSecureLocalStorage(),
-    ),
-  );
+  try {
+    await Supabase.initialize(
+      url: AppConfig.supabaseUrl,
+      anonKey: AppConfig.supabaseAnonKey,
+      debug: kIsWeb,
+      authOptions: FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce,
+        localStorage: SupabaseSecureLocalStorage(),
+      ),
+    );
+    debugPrint('DEBUG: Supabase Client Initialized');
+  } catch (e, st) {
+    debugPrint(
+      'DEBUG: Supabase init with secure localStorage failed: $e — retrying default storage $st',
+    );
+    try {
+      await Supabase.initialize(
+        url: AppConfig.supabaseUrl,
+        anonKey: AppConfig.supabaseAnonKey,
+        debug: kIsWeb,
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce,
+        ),
+      );
+      debugPrint('DEBUG: Supabase Client Initialized (fallback storage)');
+    } catch (e2, st2) {
+      debugPrint('DEBUG: Supabase init failed completely: $e2 $st2');
+      runApp(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Supabase init failed: $e2'),
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+  }
 
-  // Safe no-op on web; initializes on supported platforms.
-  await NotificationService.init();
-  await MeasurementSettings.load();
-  await NotificationSettings.load();
-  await LocaleSettings.load();
-  await ProfileSettings.loadLocal();
-  await UserBootstrap.initialize();
-  // STARTUP TRACE (deep debug)
-  // ignore: avoid_print
-  print('DEBUG: Startup - Loading user profile from Supabase...');
-  // #region agent log
-  AgentDebugLog.log(
-    runId: 'pre-fix',
-    hypothesisId: 'H3',
-    location: 'lib/main.dart:startup',
-    message: 'Startup begin: loaded local profile prefs',
-    data: {
-      'heightCm_local': ProfileSettings.heightCm.value,
-      'weightKg_local': ProfileSettings.weightKg.value,
-      'uid_present': Supabase.instance.client.auth.currentUser?.id != null,
-    },
-  );
-  // #endregion
+  try {
+    await NotificationService.init();
+  } catch (e, st) {
+    debugPrint('DEBUG: NotificationService.init failed: $e $st');
+  }
+  try {
+    await MeasurementSettings.load();
+  } catch (e, st) {
+    debugPrint('DEBUG: MeasurementSettings.load failed: $e $st');
+  }
+  try {
+    await NotificationSettings.load();
+  } catch (e, st) {
+    debugPrint('DEBUG: NotificationSettings.load failed: $e $st');
+  }
+  try {
+    await LocaleSettings.load();
+  } catch (e, st) {
+    debugPrint('DEBUG: LocaleSettings.load failed: $e $st');
+  }
+  try {
+    await ProfileSettings.loadLocal();
+  } catch (e, st) {
+    debugPrint('DEBUG: ProfileSettings.loadLocal failed: $e $st');
+  }
 
-  final data = await ProfileSettings.hydrateFromSupabase();
-  // ignore: avoid_print
-  print('DEBUG: Startup - Profile data received: $data');
-  // #region agent log
-  AgentDebugLog.log(
-    runId: 'pre-fix',
-    hypothesisId: 'H3',
-    location: 'lib/main.dart:startup',
-    message: 'Startup: Supabase profile hydration result',
-    data: {
-      'row_null': data == null,
-      'row_keys': data?.keys.toList(),
-    },
-  );
-  // #endregion
+  try {
+    await UserBootstrap.initialize().timeout(const Duration(seconds: 8));
+  } catch (e, st) {
+    debugPrint('DEBUG: UserBootstrap.initialize failed or timed out: $e $st');
+  }
 
   runApp(const BioCyberOSApp());
+
+  // Non-blocking: hydrate profile after first frame. A null profile must never
+  // prevent app navigation (biometric vault flow depends on this).
+  unawaited(
+    Future(() async {
+      try {
+        final uid = Supabase.instance.client.auth.currentUser?.id;
+        if (uid == null) {
+          final sid = Supabase.instance.client.auth.currentSession?.user.id;
+          debugPrint(
+            'DEBUG: Startup profile hydrate skipped (no currentUser UID). '
+            'currentSession.user.id=$sid',
+          );
+          return;
+        }
+        debugPrint('DEBUG: Fetching profile for UID: $uid');
+        final data = await ProfileSettings.hydrateFromSupabase().timeout(
+          const Duration(seconds: 12),
+        );
+        debugPrint('DEBUG: Profile fetch result: $data');
+        if (data == null) {
+          await ProfileSettings.ensureRemoteProfileRow();
+        }
+      } on TimeoutException catch (e) {
+        debugPrint('DEBUG: Startup profile hydrate timed out: $e');
+      } catch (e, st) {
+        debugPrint('DEBUG: Startup profile hydrate failed: $e $st');
+      }
+    }),
+  );
 }
 
 class _MissingSupabaseConfigApp extends StatelessWidget {
@@ -92,6 +162,7 @@ class _MissingSupabaseConfigApp extends StatelessWidget {
     const cyan = Color(0xFF00F3FF);
     return const MaterialApp(
       home: Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor: bg,
         body: Center(
           child: Padding(
@@ -160,10 +231,15 @@ class _BioCyberOSAppState extends State<BioCyberOSApp> {
     return MaterialApp(
       onGenerateTitle: (ctx) => AppLocalizations.of(ctx)!.appTitle,
       theme: AppTheme.darkTheme,
-      navigatorKey: AppNavigator.key,
+      navigatorKey: navigatorKey,
       locale: LocaleSettings.locale.value,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      routes: {
+        '/home': (_) => AppShell(key: AppShell.shellKey),
+        '/dashboard': (_) => AppShell(key: AppShell.shellKey),
+        '/auth': (_) => const AuthScreen(),
+      },
       home: const SplashRoute(),
     );
   }

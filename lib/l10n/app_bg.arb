@@ -218,5 +218,14 @@
   "libraryAddNew": "+ Нова в библиотеката",
   "libraryDefaultDose": "По подразбиране {dose} {unit} (редактирайте при запис)",
   "libraryNoDefaultDose": "Няма доза по подразбиране (въведете при запис)",
-  "dialogSaving": "…"
+  "dialogSaving": "…",
+  "intakeAddModeLogNow": "ЗАПИС СЕГА",
+  "intakeAddModePlan": "ПЛАН",
+  "intakeAddModeHint": "Планираните остават отворени, докато натиснете ПРИЕМ.",
+  "notificationTimeForIntake": "Време за прием: {name}",
+  "@notificationTimeForIntake": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
 }

@@ -1363,6 +1363,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'…'**
   String get dialogSaving;
+
+  /// No description provided for @intakeAddModeLogNow.
+  ///
+  /// In en, this message translates to:
+  /// **'LOG NOW'**
+  String get intakeAddModeLogNow;
+
+  /// No description provided for @intakeAddModePlan.
+  ///
+  /// In en, this message translates to:
+  /// **'PLAN'**
+  String get intakeAddModePlan;
+
+  /// No description provided for @intakeAddModeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Planned rows stay open until you tap TAKE.'**
+  String get intakeAddModeHint;
+
+  /// No description provided for @notificationTimeForIntake.
+  ///
+  /// In en, this message translates to:
+  /// **'Time for your intake: {name}'**
+  String notificationTimeForIntake(String name);
 }
 
 class _AppLocalizationsDelegate

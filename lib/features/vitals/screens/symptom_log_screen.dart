@@ -51,12 +51,23 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
       _error = null;
     });
     try {
+      final uid = _client.auth.currentUser?.id;
+      if (uid == null) {
+        if (!mounted) return;
+        setState(() {
+          _rows = const [];
+          _loading = false;
+        });
+        return;
+      }
+
       final startIso = _isoUtc(_startOfSelectedDayLocal());
       final endIso = _isoUtc(_endOfSelectedDayLocal());
 
       final data = await _client
           .from(_table)
           .select()
+          .eq('user_id', uid)
           .gte('created_at', startIso)
           .lte('created_at', endIso)
           .order('created_at', ascending: false);
@@ -115,9 +126,22 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
     if (res == null) return;
 
     try {
+      final uid = _client.auth.currentUser?.id;
+      if (uid == null) {
+        if (!mounted) return;
+        final loc = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(loc.msgSignInSave)),
+        );
+        return;
+      }
       final symptomName = await _ensureSymptomName(res.symptomType);
       if (symptomName == null) return;
-      final payload = res.toUpsertMap(isoUtc: _isoUtc, symptomType: symptomName);
+      final payload = res.toUpsertMap(
+        userId: uid,
+        isoUtc: _isoUtc,
+        symptomType: symptomName,
+      );
       await _client.from(_table).insert(payload);
       if (!mounted) return;
       await _fetch();
@@ -177,10 +201,23 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
     if (res == null) return;
 
     try {
+      final uid = _client.auth.currentUser?.id;
+      if (uid == null) {
+        if (!mounted) return;
+        final loc = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(loc.msgSignInSave)),
+        );
+        return;
+      }
       final symptomName = await _ensureSymptomName(res.symptomType);
       if (symptomName == null) return;
-      final payload = res.toUpsertMap(isoUtc: _isoUtc, symptomType: symptomName);
-      await _client.from(_table).update(payload).eq('id', id);
+      final payload = res.toUpsertMap(
+        userId: uid,
+        isoUtc: _isoUtc,
+        symptomType: symptomName,
+      );
+      await _client.from(_table).update(payload).eq('id', id).eq('user_id', uid);
       if (!mounted) return;
       await _fetch();
     } catch (e) {
@@ -209,14 +246,63 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
     }
   }
 
-  Future<void> _deleteRow(String id) async {
+  Future<void> _deleteWithUndo(Map<String, dynamic> row) async {
+    final id = (row['id'] ?? '').toString().trim();
+    if (id.isEmpty || !mounted) return;
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final idx = _rows.indexWhere((r) => (r['id'] ?? '').toString().trim() == id);
+    if (idx < 0) return;
+    final removed = row;
+
+    setState(() {
+      final next = _rows.toList(growable: true);
+      next.removeAt(idx);
+      _rows = next;
+    });
+
+    var undone = false;
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        content: const Text('Log deleted.'),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: () {
+            undone = true;
+            if (!mounted) return;
+            setState(() {
+              final next = _rows.toList(growable: true);
+              final insertAt = idx.clamp(0, next.length);
+              next.insert(insertAt, removed);
+              _rows = next;
+            });
+          },
+        ),
+      ),
+    );
+
+    final reason = await controller.closed;
+    if (!mounted) return;
+    if (undone || reason == SnackBarClosedReason.action) return;
+
     try {
-      await _client.from(_table).delete().eq('id', id);
-      await _fetch();
+      await _client.from(_table).delete().eq('id', id).eq('user_id', uid);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+      setState(() {
+        final next = _rows.toList(growable: true);
+        final insertAt = idx.clamp(0, next.length);
+        next.insert(insertAt, removed);
+        _rows = next;
+      });
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Colors.redAccent,
+          showCloseIcon: true,
+        ),
       );
     }
   }
@@ -244,6 +330,7 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
+    const ruby = Color(0xFFE91E63);
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
@@ -401,7 +488,7 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
                               final notes = _nonEmpty(row['notes']);
                               final id = (row['id'] ?? '').toString();
 
-                              return InkWell(
+                              final tile = InkWell(
                                 onTap: () => _openEditDialog(row),
                                 child: Container(
                                   margin: const EdgeInsets.only(bottom: 10),
@@ -437,14 +524,30 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
                                             ),
                                             const Spacer(),
                                             IconButton(
-                                              onPressed: id.isEmpty
-                                                  ? null
-                                                  : () => _deleteRow(id),
+                                              tooltip: l10n.edit,
+                                              onPressed: () =>
+                                                  _openEditDialog(row),
+                                              constraints:
+                                                  const BoxConstraints.tightFor(
+                                                width: 36,
+                                                height: 36,
+                                              ),
+                                              padding: EdgeInsets.zero,
                                               icon: const Icon(
-                                                Icons.delete_outline,
+                                                Icons.edit_outlined,
+                                                size: 20,
                                                 color: cyan,
                                               ),
-                                              tooltip: 'Delete',
+                                            ),
+                                            IconButton(
+                                              onPressed: id.isEmpty
+                                                  ? null
+                                                  : () => _deleteWithUndo(row),
+                                              icon: Icon(
+                                                Icons.delete_outline,
+                                                color: ruby.withValues(alpha: 0.85),
+                                              ),
+                                              tooltip: l10n.delete,
                                               constraints:
                                                   const BoxConstraints.tightFor(
                                                 width: 36,
@@ -491,6 +594,38 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
                                   ),
                                 ),
                               );
+
+                              if (id.isEmpty) return tile;
+
+                              return Dismissible(
+                                key: ValueKey('symptom_log:$id'),
+                                direction: DismissDirection.endToStart,
+                                confirmDismiss: (_) async {
+                                  // Always allow swipe; actual delete is delayed with UNDO.
+                                  return true;
+                                },
+                                onDismissed: (_) {
+                                  _deleteWithUndo(row);
+                                },
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: ruby.withValues(alpha: 0.15),
+                                    border: Border.all(
+                                      color: ruby.withValues(alpha: 0.5),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.delete_outline,
+                                    color: Color(0xFFE91E63),
+                                  ),
+                                ),
+                                child: tile,
+                              );
                             },
                           ),
           ),
@@ -528,10 +663,12 @@ class _SymptomLogDraft {
   });
 
   Map<String, dynamic> toUpsertMap({
+    required String userId,
     required String Function(DateTime) isoUtc,
     required String symptomType,
   }) {
     final map = <String, dynamic>{
+      'user_id': userId,
       'created_at': isoUtc(createdAtLocal),
     };
     if (bodyTemp != null) map['body_temp'] = bodyTemp;

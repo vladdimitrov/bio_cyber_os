@@ -43,8 +43,18 @@ class BiometricAuthService {
   }
 
   static Future<bool> authenticate() async {
-    if (!await isAvailable()) return false;
     try {
+      final canCheck = await _auth.canCheckBiometrics;
+      final supported = await _auth.isDeviceSupported();
+      if (!canCheck && !supported) {
+        debugPrint(
+          'DEBUG: BiometricAuthService.authenticate: device not supported '
+          '(canCheckBiometrics=$canCheck, isDeviceSupported=$supported)',
+        );
+        return false;
+      }
+      if (!await isAvailable()) return false;
+
       final ok = await _auth.authenticate(
         localizedReason: 'Please authenticate to access Bio-Cyber OS',
         options: const AuthenticationOptions(
@@ -54,7 +64,14 @@ class BiometricAuthService {
         ),
       );
       return ok;
-    } on PlatformException {
+    } on PlatformException catch (e, st) {
+      debugPrint(
+        'DEBUG: BiometricAuthService.authenticate PlatformException: '
+        'code=${e.code} message=${e.message} details=${e.details} stack=$st',
+      );
+      return false;
+    } catch (e, st) {
+      debugPrint('DEBUG: BiometricAuthService.authenticate failed: $e $st');
       return false;
     }
   }

@@ -1,17 +1,82 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:bio_cyber_os/l10n/app_localizations.dart';
-
 import '../../../app_shell.dart';
 import '../../../core/security/biometric_auth_service.dart';
 import '../../../core/security/session_vault.dart';
+import '../../../core/settings/profile_settings.dart';
+import 'forgot_password_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _PulsingLogo extends StatefulWidget {
+  const _PulsingLogo();
+
+  @override
+  State<_PulsingLogo> createState() => _PulsingLogoState();
+}
+
+class _PulsingLogoState extends State<_PulsingLogo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic)
+        .drive(Tween<double>(begin: 0.86, end: 1.0));
+    _scale = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic)
+        .drive(Tween<double>(begin: 0.98, end: 1.02));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 800),
+        curve: Curves.easeOutCubic,
+        builder: (context, opacity, child) {
+          return Opacity(opacity: opacity, child: child);
+        },
+        child: FadeTransition(
+          opacity: _fade,
+          child: ScaleTransition(
+            scale: _scale,
+            child: Image.asset(
+              'assets/images/heart_logo_transparent.png',
+              height: 180,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(
+                  Icons.favorite,
+                  color: Colors.redAccent,
+                  size: 120,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _AuthScreenState extends State<AuthScreen> {
@@ -65,12 +130,26 @@ class _AuthScreenState extends State<AuthScreen> {
         final session = client.auth.currentSession;
         if (session != null) {
           if (!mounted) return;
-          _goToApp();
+          // ignore: avoid_print
+          print('VAULT_DEBUG: Authentication successful, launching session...');
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            // Let the Android biometric sheet fully dismiss before navigating.
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+            if (!mounted) return;
+            await Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => AppShell(key: AppShell.shellKey),
+              ),
+            );
+          });
           return;
         }
 
         final refreshToken = await SessionVault.readRefreshToken();
         if ((refreshToken ?? '').trim().isEmpty) {
+          // ignore: avoid_print
+          print('TOKEN MISSING');
           // ignore: avoid_print
           print(
             'DEBUG: Biometric unlock: no refresh token in secure storage. '
@@ -79,15 +158,42 @@ class _AuthScreenState extends State<AuthScreen> {
           _showError('No saved session. Please log in once with email & password.');
           return;
         }
+        // ignore: avoid_print
+        print('TOKEN FOUND');
 
-        final res = await client.auth.setSession(refreshToken!.trim());
-        final restored = res.session ?? client.auth.currentSession;
-        if (restored != null) {
-          if (!mounted) return;
-          _goToApp();
-          return;
+        await client.auth.setSession(refreshToken!.trim());
+        if (!mounted) return;
+
+        // Give auth state a brief moment to hydrate user/session after setSession.
+        final start = DateTime.now();
+        while (client.auth.currentSession == null &&
+            DateTime.now().difference(start) <
+                const Duration(milliseconds: 1200)) {
+          await Future<void>.delayed(const Duration(milliseconds: 80));
         }
-        _showError('Session restore failed. Please log in with email & password.');
+        debugPrint(
+          'DEBUG: After biometric setSession: '
+          'currentSession=${client.auth.currentSession != null} '
+          'currentUser=${client.auth.currentUser != null}',
+        );
+
+        // Best-effort: ensure profile row exists; never block navigation.
+        await ProfileSettings.ensureRemoteProfileRow();
+        // ignore: avoid_print
+        print('VAULT_DEBUG: Forcing jump to AppShell regardless of profile state');
+        // ignore: avoid_print
+        print('VAULT_DEBUG: Authentication successful, launching session...');
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          if (!mounted) return;
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute<void>(
+              builder: (_) => AppShell(key: AppShell.shellKey),
+            ),
+          );
+        });
+        return;
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -147,11 +253,13 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _busy = true);
     try {
       if (_isLogin) {
-        await Supabase.instance.client.auth.signInWithPassword(
+        final res = await Supabase.instance.client.auth.signInWithPassword(
           email: email,
           password: password,
         );
-        await SessionVault.saveFromCurrentSession();
+        await SessionVault.saveRefreshToken(res.session?.refreshToken);
+        await SessionVault.saveFromCurrentSession(); // fallback
+        await ProfileSettings.ensureRemoteProfileRow();
         final hasStored = await SessionVault.hasRefreshToken();
         // ignore: avoid_print
         print('DEBUG: After manual login, stored refresh token: $hasStored');
@@ -202,10 +310,10 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const bg = Color(0xFF050510);
-    const cyan = Color(0xFF00F3FF);
-    const amber = Color(0xFFFFC107);
-    final l10n = AppLocalizations.of(context)!;
+    const bg = Color(0xFF000000);
+    // Extracted from assets/images/heart_logo.png
+    const logoCyan = Color(0xFF43B8DC);
+    const logoGold = Color(0xFFCBAB67);
     final hasSession = Supabase.instance.client.auth.currentSession != null;
     final showBiometric = _isLogin && _biometricAvailable;
     final canUseBiometric = _biometricEnabled && (_hasStoredSession || hasSession);
@@ -214,10 +322,9 @@ class _AuthScreenState extends State<AuthScreen> {
       children: [
         Scaffold(
           backgroundColor: bg,
-          appBar: AppBar(
-            title: Text(_isLogin ? l10n.logIn : l10n.signUp),
-          ),
-          body: Center(
+          resizeToAvoidBottomInset: false,
+          body: SafeArea(
+            child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: Padding(
@@ -225,10 +332,13 @@ class _AuthScreenState extends State<AuthScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const _PulsingLogo(),
+                    const SizedBox(height: 18),
                 if (!_isLogin) ...[
                   TextField(
                     controller: _username,
-                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    style:
+                        const TextStyle(color: logoCyan, fontFamily: 'monospace'),
                     decoration: const InputDecoration(
                       labelText: 'Username (Optional)',
                     ),
@@ -239,7 +349,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
-                  style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                  style:
+                      const TextStyle(color: logoCyan, fontFamily: 'monospace'),
                   decoration: const InputDecoration(labelText: 'Email'),
                   textInputAction: TextInputAction.next,
                 ),
@@ -247,7 +358,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 TextField(
                   controller: _password,
                   obscureText: true,
-                  style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                  style:
+                      const TextStyle(color: logoCyan, fontFamily: 'monospace'),
                   decoration: const InputDecoration(labelText: 'Password'),
                   textInputAction:
                       _isLogin ? TextInputAction.done : TextInputAction.next,
@@ -258,7 +370,10 @@ class _AuthScreenState extends State<AuthScreen> {
                   TextField(
                     controller: _confirmPassword,
                     obscureText: true,
-                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    style: const TextStyle(
+                      color: logoCyan,
+                      fontFamily: 'monospace',
+                    ),
                     decoration:
                         const InputDecoration(labelText: 'Confirm Password'),
                     onSubmitted: (_) => _busy ? null : _submit(),
@@ -280,6 +395,27 @@ class _AuthScreenState extends State<AuthScreen> {
                         : Text(_isLogin ? 'LOG IN' : 'CREATE ACCOUNT'),
                   ),
                 ),
+                if (_isLogin) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ForgotPasswordScreen(),
+                                ),
+                              );
+                            },
+                      child: const Text(
+                        'Forgot Password?',
+                        style: TextStyle(color: logoCyan),
+                      ),
+                    ),
+                  ),
+                ],
                 if (showBiometric) ...[
                   const SizedBox(height: 10),
                   IconButton(
@@ -287,6 +423,21 @@ class _AuthScreenState extends State<AuthScreen> {
                     onPressed: _busy
                         ? null
                         : () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            final supported =
+                                await BiometricAuthService.isAvailable();
+                            if (!supported) {
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'This device does not support biometrics.',
+                                  ),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                              return;
+                            }
                             if (!_biometricEnabled) {
                               _showError(
                                 'Enable biometrics in Settings → SECURITY first.',
@@ -304,7 +455,9 @@ class _AuthScreenState extends State<AuthScreen> {
                     icon: Icon(
                       Icons.fingerprint,
                       size: 34,
-                      color: canUseBiometric ? amber : amber.withOpacity(0.35),
+                      color: canUseBiometric
+                          ? logoGold
+                          : logoGold.withValues(alpha: 0.35),
                     ),
                   ),
                 ],
@@ -313,13 +466,14 @@ class _AuthScreenState extends State<AuthScreen> {
                   onPressed: _busy ? null : () => setState(() => _isLogin = !_isLogin),
                   child: Text(
                     _isLogin ? 'Need an account? Sign up' : 'Have an account? Log in',
-                    style: const TextStyle(color: cyan),
+                    style: const TextStyle(color: logoCyan),
                   ),
                 ),
                   ],
                 ),
               ),
             ),
+          ),
           ),
         ),
         if (_busy) ...[

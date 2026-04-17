@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
@@ -13,11 +12,8 @@ import '../../../core/settings/locale_settings.dart';
 import '../../../core/settings/measurement_settings.dart';
 import '../../../core/settings/unit_converter.dart';
 import '../../../core/settings/notification_settings.dart';
+import '../../../core/settings/profile_settings.dart';
 import '../../auth/screens/splash_route.dart';
-
-const _kPrefHeightCm = 'profile_height_cm';
-const _kPrefWeightKg = 'profile_weight_kg';
-const _kPrefAge = 'profile_age';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -43,6 +39,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _saving = false;
   bool _profileListenersAttached = false;
   bool _targetsListenersAttached = false;
+  String? _lastSavedHeightCmRaw;
+  String? _lastSavedWeightKgRaw;
+  String? _lastSavedAgeRaw;
 
   Timer? _profileRemoteDebounce;
   Timer? _targetsRemoteDebounce;
@@ -98,32 +97,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveProfileLocal() async {
     if (_updatingDisplay) return;
     try {
-      // ignore: avoid_print
-      print('DEBUG: Attempting to save Height: ${_heightCmController.text}');
-      // ignore: avoid_print
-      print('DEBUG: Attempting to save Weight: ${_weightKgController.text}');
-      // ignore: avoid_print
-      print('DEBUG: Attempting to save Age: ${_ageController.text}');
-
-      final p = await SharedPreferences.getInstance();
-      // As requested (even if this app uses different pref keys).
-      // ignore: avoid_print
-      print("DEBUG: SharedPreferences status: ${p.containsKey('user_height')}");
-      // ignore: avoid_print
-      print(
-        "DEBUG: SharedPreferences status (profile_height_cm): ${p.containsKey(_kPrefHeightCm)}",
-      );
-      // ignore: avoid_print
-      print(
-        "DEBUG: SharedPreferences status (profile_weight_kg): ${p.containsKey(_kPrefWeightKg)}",
-      );
-      // ignore: avoid_print
-      print(
-        "DEBUG: SharedPreferences status (profile_age): ${p.containsKey(_kPrefAge)}",
-      );
-
       final hRaw = _heightCmController.text.trim();
       final wRaw = _weightKgController.text.trim();
+      final aRaw = _ageController.text.trim();
+
+      // Avoid spamming storage writes/logs: only save when values actually change.
+      if (_lastSavedHeightCmRaw == hRaw &&
+          _lastSavedWeightKgRaw == wRaw &&
+          _lastSavedAgeRaw == aRaw) {
+        return;
+      }
 
       double? parseNum(String v) {
         final t = v.trim().replaceAll(',', '.');
@@ -141,34 +124,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? UnitConverter.lbsToKg(wDisplay)
           : wDisplay;
 
-      await p.setString(_kPrefHeightCm, hCm?.toString() ?? '');
-      await p.setString(_kPrefWeightKg, wKg?.toString() ?? '');
-      await p.setString(_kPrefAge, _ageController.text.trim());
+      final age = int.tryParse(aRaw);
+      await ProfileSettings.setLocal(heightCm: hCm, weightKg: wKg, age: age);
 
-      // ignore: avoid_print
-      print(
-        'DEBUG: Local prefs after save -> '
-        '$_kPrefHeightCm=${p.getString(_kPrefHeightCm)} | '
-        '$_kPrefWeightKg=${p.getString(_kPrefWeightKg)} | '
-        '$_kPrefAge=${p.getString(_kPrefAge)}',
-      );
+      _lastSavedHeightCmRaw = hRaw;
+      _lastSavedWeightKgRaw = wRaw;
+      _lastSavedAgeRaw = aRaw;
 
       // #region agent log
       AgentDebugLog.log(
         runId: 'pre-fix',
         hypothesisId: 'H1',
         location: 'lib/features/config/screens/settings_screen.dart:_saveProfileLocal',
-        message: 'Profile saved to SharedPreferences',
+        message: 'Profile saved locally (best-effort)',
         data: {
-          'has_height_key': p.containsKey(_kPrefHeightCm),
-          'has_weight_key': p.containsKey(_kPrefWeightKg),
-          'has_age_key': p.containsKey(_kPrefAge),
           'height_raw': _heightCmController.text.trim(),
           'weight_raw': _weightKgController.text.trim(),
           'age_raw': _ageController.text.trim(),
-          'height_pref': p.getString(_kPrefHeightCm),
-          'weight_pref': p.getString(_kPrefWeightKg),
-          'age_pref': p.getString(_kPrefAge),
+          'height_cm': hCm,
+          'weight_kg': wKg,
+          'age': age,
         },
       );
       // #endregion
@@ -177,10 +152,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadProfileFromPrefs() async {
     try {
-      final p = await SharedPreferences.getInstance();
+      await ProfileSettings.loadLocal();
       if (!mounted) return;
-      final hCm = _parseOptionalDouble(p.getString(_kPrefHeightCm) ?? '');
-      final wKg = _parseOptionalDouble(p.getString(_kPrefWeightKg) ?? '');
+      final hCm = ProfileSettings.heightCm.value;
+      final wKg = ProfileSettings.weightKg.value;
       _updatingDisplay = true;
       _heightCmController.text = (_measurementSystem == MeasurementSystem.imperial && hCm != null)
           ? UnitConverter.cmToInches(hCm).toStringAsFixed(0)
@@ -189,7 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? UnitConverter.kgToLbs(wKg).toStringAsFixed(1)
           : (wKg?.toStringAsFixed(1) ?? '');
       _updatingDisplay = false;
-      _ageController.text = p.getString(_kPrefAge) ?? '';
+      _ageController.text = ProfileSettings.age.value?.toString() ?? '';
       if (!_profileListenersAttached) {
         _heightCmController.addListener(_onProfileFieldsChanged);
         _weightKgController.addListener(_onProfileFieldsChanged);
@@ -713,9 +688,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     const cyan = Color(0xFF00F3FF);
     final l10n = AppLocalizations.of(context)!;
     final bmi = _bmiDisplay(l10n);
+    const saveBarHeight = 86.0;
 
     return Scaffold(
       backgroundColor: bg,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(l10n.screenConfig),
         actions: [
@@ -738,14 +715,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+      bottomNavigationBar: _loading
+          ? null
+          : SafeArea(
+              top: false,
+              child: Container(
+                height: saveBarHeight,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                decoration: const BoxDecoration(
+                  color: bg,
+                  border: Border(top: BorderSide(color: cyan, width: 2)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x5500F3FF),
+                      blurRadius: 22,
+                      spreadRadius: 1,
+                      offset: Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _saveAllFromButton,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: cyan,
+                      foregroundColor: Colors.black,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
+                      ),
+                      textStyle: const TextStyle(
+                        fontFamily: 'monospace',
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.black,
+                            ),
+                          )
+                        : Text(l10n.saveConfig),
+                  ),
+                ),
+              ),
+            ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SafeArea(child: Center(child: CircularProgressIndicator()))
           : SafeArea(
               child: Form(
                 key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
+                child: Column(
                   children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(
+                          16,
+                          16,
+                          16,
+                          16 + saveBarHeight,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                     const SizedBox(height: 14),
                     Text(
                       l10n.languageSectionTitle,
@@ -1091,33 +1127,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       validator: (v) =>
                           int.tryParse((v ?? '').trim()) == null ? l10n.number : null,
                     ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: _saving ? null : _saveAllFromButton,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: cyan,
-                          foregroundColor: Colors.black,
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.zero,
-                          ),
-                          textStyle: const TextStyle(
-                            fontFamily: 'monospace',
-                            letterSpacing: 1.2,
-                            fontWeight: FontWeight.w800,
-                          ),
+                          ],
                         ),
-                        child: _saving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.black,
-                                ),
-                              )
-                            : Text(l10n.saveConfig),
                       ),
                     ),
                   ],

@@ -16,17 +16,20 @@ class ProfileSettings {
   // Keep in sync with Settings screen prefs keys.
   static const _kPrefHeightCm = 'profile_height_cm';
   static const _kPrefWeightKg = 'profile_weight_kg';
+  static const _kPrefAge = 'profile_age';
   static const _kPrefSelectedLanguage = 'selected_language';
   static const _kPrefNotificationsEnabled = 'notifications_enabled';
 
   static final ValueNotifier<double?> heightCm = ValueNotifier<double?>(null);
   static final ValueNotifier<double?> weightKg = ValueNotifier<double?>(null);
+  static final ValueNotifier<int?> age = ValueNotifier<int?>(null);
   static final ValueNotifier<String> selectedLanguage =
       ValueNotifier<String>(''); // '' = system
   static final ValueNotifier<bool> notificationsEnabled =
       ValueNotifier<bool>(false);
 
   static bool _loadedLocal = false;
+  static final Map<String, Object?> _memFallback = <String, Object?>{};
 
   static double? _parseOptionalDouble(String v) {
     final t = v.trim().replaceAll(',', '.');
@@ -41,6 +44,7 @@ class ProfileSettings {
       final p = await SharedPreferences.getInstance();
       heightCm.value = _parseOptionalDouble(p.getString(_kPrefHeightCm) ?? '');
       weightKg.value = _parseOptionalDouble(p.getString(_kPrefWeightKg) ?? '');
+      age.value = int.tryParse((p.getString(_kPrefAge) ?? '').trim());
       selectedLanguage.value = (p.getString(_kPrefSelectedLanguage) ?? '').trim();
       notificationsEnabled.value =
           p.getBool(_kPrefNotificationsEnabled) ?? false;
@@ -56,13 +60,6 @@ class ProfileSettings {
       if (NotificationSettings.enabled.value != notificationsEnabled.value) {
         await NotificationSettings.setEnabled(notificationsEnabled.value);
       }
-
-      // ignore: avoid_print
-      print('DEBUG: Local Language saved: ${selectedLanguage.value}');
-      // ignore: avoid_print
-      print(
-        'DEBUG: Notifications Switch state: ${notificationsEnabled.value}',
-      );
 
       // #region agent log
       AgentDebugLog.log(
@@ -81,19 +78,29 @@ class ProfileSettings {
       );
       // #endregion
     } catch (_) {
-      heightCm.value = null;
-      weightKg.value = null;
+      // Fallback for web/storage failures: use in-memory cache.
+      heightCm.value =
+          _parseOptionalDouble((_memFallback[_kPrefHeightCm] ?? '').toString());
+      weightKg.value =
+          _parseOptionalDouble((_memFallback[_kPrefWeightKg] ?? '').toString());
+      age.value = int.tryParse((_memFallback[_kPrefAge] ?? '').toString().trim());
+      selectedLanguage.value =
+          (_memFallback[_kPrefSelectedLanguage] ?? '').toString().trim();
+      final n = _memFallback[_kPrefNotificationsEnabled];
+      notificationsEnabled.value = n is bool ? n : false;
     }
   }
 
   static Future<void> setLocal({
     double? heightCm,
     double? weightKg,
+    int? age,
     String? selectedLanguage,
     bool? notificationsEnabled,
   }) async {
     ProfileSettings.heightCm.value = heightCm;
     ProfileSettings.weightKg.value = weightKg;
+    ProfileSettings.age.value = age;
     if (selectedLanguage != null) {
       ProfileSettings.selectedLanguage.value = selectedLanguage;
     }
@@ -102,16 +109,38 @@ class ProfileSettings {
     }
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setString(_kPrefHeightCm, heightCm?.toString() ?? '');
-      await p.setString(_kPrefWeightKg, weightKg?.toString() ?? '');
-      await p.setString(
+      if (kIsWeb) {
+        await p.reload();
+      }
+
+      final nextH = heightCm?.toString() ?? '';
+      final nextW = weightKg?.toString() ?? '';
+      final nextAge = age?.toString() ?? '';
+      final nextLang = ProfileSettings.selectedLanguage.value;
+      final nextNotif = ProfileSettings.notificationsEnabled.value;
+
+      final okH = await p.setString(_kPrefHeightCm, nextH);
+      final okW = await p.setString(_kPrefWeightKg, nextW);
+      final okAge = await p.setString(_kPrefAge, nextAge);
+      final okLang = await p.setString(
         _kPrefSelectedLanguage,
-        ProfileSettings.selectedLanguage.value,
+        nextLang,
       );
-      await p.setBool(
+      final okNotif = await p.setBool(
         _kPrefNotificationsEnabled,
-        ProfileSettings.notificationsEnabled.value,
+        nextNotif,
       );
+      if (!okH || !okW || !okAge || !okLang || !okNotif) {
+        _memFallback[_kPrefHeightCm] = nextH;
+        _memFallback[_kPrefWeightKg] = nextW;
+        _memFallback[_kPrefAge] = nextAge;
+        _memFallback[_kPrefSelectedLanguage] = nextLang;
+        _memFallback[_kPrefNotificationsEnabled] = nextNotif;
+        debugPrint(
+          'DEBUG: SharedPreferences save returned false (web=$kIsWeb) '
+          'height=$okH weight=$okW age=$okAge lang=$okLang notif=$okNotif',
+        );
+      }
     } catch (_) {}
   }
 
@@ -166,11 +195,6 @@ class ProfileSettings {
         await NotificationSettings.setEnabled(notif);
       }
 
-      // ignore: avoid_print
-      print('DEBUG: Local Language saved: $lang');
-      // ignore: avoid_print
-      print('DEBUG: Notifications Switch state: $notif');
-
       // #region agent log
       AgentDebugLog.log(
         runId: 'pre-fix',
@@ -190,6 +214,19 @@ class ProfileSettings {
       return Map<String, dynamic>.from(row);
     } catch (_) {}
     return null;
+  }
+
+  /// Ensure a row exists for the current user.
+  ///
+  /// This is safe to call after login/biometric restore. It never blocks app
+  /// navigation; failures are swallowed (but can be logged by callers).
+  static Future<void> ensureRemoteProfileRow() async {
+    final client = Supabase.instance.client;
+    final uid = client.auth.currentUser?.id;
+    if (uid == null) return;
+    try {
+      await client.from('profiles').upsert({'id': uid}, onConflict: 'id');
+    } catch (_) {}
   }
 }
 

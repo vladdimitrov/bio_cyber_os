@@ -5,9 +5,8 @@ import 'package:bio_cyber_os/l10n/app_localizations.dart';
 import 'features/analytics/screens/analytics_screen.dart';
 import 'features/config/screens/settings_screen.dart';
 import 'features/fuel/screens/fuel_dashboard_screen.dart';
+import 'features/intake/screens/daily_intake_screen.dart';
 import 'features/library/screens/library_screen.dart';
-import 'features/meds/screens/medications_screen.dart';
-import 'features/supps/screens/supplements_screen.dart';
 import 'features/vitals/screens/symptom_log_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -44,6 +43,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
+  int _intakeTabIndex = 0;
   String? _fuelFocusLogId;
   DateTime? _fuelFocusDate;
   String? _suppsFocusLogId;
@@ -62,6 +62,7 @@ class _AppShellState extends State<AppShell> {
   void _openSupps({String? focusLogId, DateTime? focusDate}) {
     setState(() {
       _index = 1;
+      _intakeTabIndex = 0;
       _suppsFocusLogId = focusLogId;
       _suppsFocusDate = focusDate;
     });
@@ -69,7 +70,8 @@ class _AppShellState extends State<AppShell> {
 
   void _openMeds({String? focusLogId, DateTime? focusDate}) {
     setState(() {
-      _index = 2;
+      _index = 1;
+      _intakeTabIndex = 1;
       _medsFocusLogId = focusLogId;
       _medsFocusDate = focusDate;
     });
@@ -88,14 +90,14 @@ class _AppShellState extends State<AppShell> {
           FuelDashboardScreen(
             focusLogId: _fuelFocusLogId,
             focusDate: _fuelFocusDate,
+            isActive: _index == 0,
           ),
-          SupplementsScreen(
-            focusLogId: _suppsFocusLogId,
-            focusDate: _suppsFocusDate,
-          ),
-          MedicationsScreen(
-            focusLogId: _medsFocusLogId,
-            focusDate: _medsFocusDate,
+          DailyIntakeScreen(
+            initialTabIndex: _intakeTabIndex,
+            focusSuppLogId: _suppsFocusLogId,
+            focusSuppDate: _suppsFocusDate,
+            focusMedLogId: _medsFocusLogId,
+            focusMedDate: _medsFocusDate,
           ),
           const SymptomLogScreen(),
           const AnalyticsScreen(),
@@ -118,8 +120,8 @@ class _AppShellState extends State<AppShell> {
             }
             if (i != 1) _suppsFocusLogId = null;
             if (i != 1) _suppsFocusDate = null;
-            if (i != 2) _medsFocusLogId = null;
-            if (i != 2) _medsFocusDate = null;
+            if (i != 1) _medsFocusLogId = null;
+            if (i != 1) _medsFocusDate = null;
           }),
           backgroundColor: bg,
           selectedItemColor: cyan,
@@ -142,12 +144,7 @@ class _AppShellState extends State<AppShell> {
             BottomNavigationBarItem(
               icon: const Icon(Icons.medication_outlined),
               activeIcon: const Icon(Icons.medication),
-              label: l10n.navSupps,
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.medication_liquid_outlined),
-              activeIcon: const Icon(Icons.medication_liquid),
-              label: l10n.navMeds,
+              label: 'Intake',
             ),
             BottomNavigationBarItem(
               icon: const Icon(Icons.favorite_border),

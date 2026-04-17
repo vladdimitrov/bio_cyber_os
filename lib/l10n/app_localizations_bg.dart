@@ -721,4 +721,19 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String get dialogSaving => '…';
+
+  @override
+  String get intakeAddModeLogNow => 'ЗАПИС СЕГА';
+
+  @override
+  String get intakeAddModePlan => 'ПЛАН';
+
+  @override
+  String get intakeAddModeHint =>
+      'Планираните остават отворени, докато натиснете ПРИЕМ.';
+
+  @override
+  String notificationTimeForIntake(String name) {
+    return 'Време за прием: $name';
+  }
 }
