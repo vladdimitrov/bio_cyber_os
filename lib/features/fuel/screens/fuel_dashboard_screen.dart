@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
@@ -11,6 +10,7 @@ import 'package:bio_cyber_os/l10n/app_localizations_format.dart';
 import 'package:bio_cyber_os/l10n/context_l10n.dart';
 import 'package:bio_cyber_os/l10n/meal_labels.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../../core/macro_display.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/supabase_error_message.dart';
@@ -18,6 +18,7 @@ import '../../../core/supabase_log_date.dart';
 import '../../../core/widgets/reminder_section.dart';
 import '../../../core/models/ingredient.dart';
 import '../../../core/widgets/diet_indicator_badges.dart';
+import '../../food/screens/barcode_scanner_screen.dart';
 import '../../../core/settings/measurement_settings.dart';
 import '../../../core/settings/unit_options.dart';
 import '../../../core/settings/unit_converter.dart';
@@ -40,10 +41,6 @@ class FuelDashboardScreen extends StatefulWidget {
 
 class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   final _client = Supabase.instance.client;
-
-  // TODO: wire to real entitlement source.
-  // ignore: unused_field
-  final bool _isPremium = false;
 
   /// Supabase table for fuel entries (`daily_logs` or `food_logs` if renamed).
   static const String _fuelLogsTable = 'daily_logs';
@@ -104,14 +101,18 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
       _selectedDay = DateTime(d.year, d.month, d.day);
       _fetchAndApplyDailyLogs().then((_) {
         if (!mounted) return;
-        WidgetsBinding.instance.addPostFrameCallback((_) => _ensureHighlightVisible());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _ensureHighlightVisible(),
+        );
       });
     }
     if (widget.focusLogId != null &&
         widget.focusLogId!.trim().isNotEmpty &&
         widget.focusLogId != oldWidget.focusLogId) {
       setState(() => _highlightLogId = widget.focusLogId);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _ensureHighlightVisible());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _ensureHighlightVisible(),
+      );
     }
   }
 
@@ -275,7 +276,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
 
     final data = await _client
         .from(_fuelLogsTable)
-        .select('*, ingredients(*), recipes(*, recipe_ingredients(*, ingredients(*)))')
+        .select(
+          '*, ingredients(*), recipes(*, recipe_ingredients(*, ingredients(*)))',
+        )
         .eq('user_id', uid)
         .gte('created_at', supabaseCreatedAtDayGte(dayStr))
         .lte('created_at', supabaseCreatedAtDayLte(dayStr))
@@ -331,7 +334,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
           reminderAt: (row['reminder_at'] ?? '').toString(),
           reminderOffsetMinutes: row['reminder_offset_minutes'],
           amountGrams: grams is num ? grams.toDouble() : 0.0,
-          ingredient: ing is Map<String, dynamic> ? Ingredient.fromJson(ing) : null,
+          ingredient: ing is Map<String, dynamic>
+              ? Ingredient.fromJson(ing)
+              : null,
           recipe: rec is Map<String, dynamic> ? _Recipe.fromJson(rec) : null,
           recipeId: (row['recipe_id'] ?? '').toString(),
           ingredientId: (row['ingredient_id'] ?? '').toString(),
@@ -425,7 +430,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   }
 
   /// Sync macros for the logged amount (ingredient or recipe portion) for list row UI+.
-  ({double p, double c, double f, double cal}) _lineMacrosForDisplay(_DailyRecord r) {
+  ({double p, double c, double f, double cal}) _lineMacrosForDisplay(
+    _DailyRecord r,
+  ) {
     if (r.ingredient != null && r.ingredientId.isNotEmpty) {
       final g = r.amountGrams;
       final factor = g / 100.0;
@@ -450,9 +457,8 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
     return (p: 0, c: 0, f: 0, cal: 0);
   }
 
-  Future<({double p, double c, double f, int cal})?> _macrosForRecordOnSelectedDay(
-    _DailyRecord r,
-  ) async {
+  Future<({double p, double c, double f, int cal})?>
+  _macrosForRecordOnSelectedDay(_DailyRecord r) async {
     // List is already filtered to the selected day via `created_at`.
     if (r.ingredientId.isNotEmpty && r.ingredient != null) {
       final factor = (r.amountGrams <= 0) ? 0.0 : (r.amountGrams / 100.0);
@@ -558,14 +564,18 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   double get _safeTargetFats =>
       (_targetFats != null && _targetFats! > 0) ? _targetFats! : 150.0;
   int get _safeTargetCalories =>
-      (_targetCalories != null && _targetCalories! > 0) ? _targetCalories! : 2000;
+      (_targetCalories != null && _targetCalories! > 0)
+      ? _targetCalories!
+      : 2000;
 
   // grams prompt moved into _FoodLogSheet to keep dialog lifecycle isolated.
 
   Future<void> _deleteLog(String id, {bool removedWasPlanned = false}) async {
     const cyan = Color(0xFF00F3FF);
     setState(() {
-      _dailyRecords = _dailyRecords.where((r) => r.id != id).toList(growable: false);
+      _dailyRecords = _dailyRecords
+          .where((r) => r.id != id)
+          .toList(growable: false);
     });
     await _calculateTotals();
 
@@ -582,7 +592,11 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         await _fetchFuelData();
         return;
       }
-      await _client.from(_fuelLogsTable).delete().eq('id', id).eq('user_id', uid);
+      await _client
+          .from(_fuelLogsTable)
+          .delete()
+          .eq('id', id)
+          .eq('user_id', uid);
       if (!mounted) return;
       await _fetchFuelData();
       if (mounted && removedWasPlanned) {
@@ -606,10 +620,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
 
   Future<void> _planMealFlow(String mealType) async {
     final now = TimeOfDay.now();
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: now,
-    );
+    final pickedTime = await showTimePicker(context: context, initialTime: now);
     if (pickedTime == null) return;
     if (!mounted) return;
 
@@ -673,9 +684,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
     if (result == true && mounted) {
       await _fetchFuelData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.msgEntryUpdated)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.msgEntryUpdated)));
     }
   }
 
@@ -683,9 +694,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
     final recordId = r.id.trim();
     if (recordId.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.msgEmptyRecordId)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.msgEmptyRecordId)));
       return;
     }
 
@@ -699,7 +710,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                     id: e.id,
                     mealType: e.mealType,
                     consumedAt: nowIso,
-                    scheduledAt: e.scheduledAt.trim().isNotEmpty ? e.scheduledAt : e.consumedAt,
+                    scheduledAt: e.scheduledAt.trim().isNotEmpty
+                        ? e.scheduledAt
+                        : e.consumedAt,
                     consumedEventAt: nowIso,
                     reminderAt: e.reminderAt,
                     reminderOffsetMinutes: e.reminderOffsetMinutes,
@@ -796,7 +809,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         ? (e.recipe?.name ?? l10n.recipe)
         : (e.ingredient?.name ?? l10n.ingredient);
     final slot = e.scheduledAt.trim().isNotEmpty ? e.scheduledAt : e.consumedAt;
-    final whenDone = e.consumedEventAt.trim().isNotEmpty ? e.consumedEventAt : e.consumedAt;
+    final whenDone = e.consumedEventAt.trim().isNotEmpty
+        ? e.consumedEventAt
+        : e.consumedAt;
     return {
       'id': e.id,
       'name': name,
@@ -919,7 +934,10 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                 foregroundColor: const Color(0xFF00F3FF),
                 elevation: 0,
                 side: const BorderSide(color: Color(0xFF00F3FF), width: 1),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 minimumSize: const Size(64, 40),
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.zero,
@@ -943,10 +961,8 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
               padding: EdgeInsets.zero,
             ),
             IconButton(
-              onPressed: () async => _deleteLog(
-                record.id,
-                removedWasPlanned: true,
-              ),
+              onPressed: () async =>
+                  _deleteLog(record.id, removedWasPlanned: true),
               icon: const Icon(Icons.delete_outline, size: 20),
               color: const Color(0xFF00F3FF),
               tooltip: l10n.delete,
@@ -955,10 +971,8 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
             ),
           ] else
             IconButton(
-              onPressed: () async => _deleteLog(
-                record.id,
-                removedWasPlanned: false,
-              ),
+              onPressed: () async =>
+                  _deleteLog(record.id, removedWasPlanned: false),
               icon: const Icon(Icons.delete_outline),
               color: const Color(0xFF00F3FF),
               tooltip: l10n.delete,
@@ -1087,199 +1101,202 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SelectableText(
-                      _error!,
-                      style: const TextStyle(color: cyan),
+            ? Padding(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(
+                  _error!,
+                  style: const TextStyle(color: cyan),
+                ),
+              )
+            : Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
                     ),
-                  )
-                : Column(
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: cyan, width: 2)),
+                    ),
+                    child: DefaultTextStyle(
+                      style: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                        letterSpacing: 0.6,
+                        fontSize: 13,
                       ),
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: cyan, width: 2),
-                        ),
-                      ),
-                      child: DefaultTextStyle(
-                        style: const TextStyle(
-                          color: cyan,
-                          fontFamily: 'monospace',
-                          letterSpacing: 0.6,
-                          fontSize: 13,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () => _shiftDay(-1),
-                                  icon: const Icon(Icons.chevron_left),
-                                  color: cyan,
-                                  tooltip: l10n.prevDay,
-                                ),
-                                Expanded(
-                                  child: Center(
-                                    child: TextButton(
-                                      onPressed: _pickDate,
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: cyan,
-                                        shape: const RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.zero,
-                                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              IconButton(
+                                onPressed: () => _shiftDay(-1),
+                                icon: const Icon(Icons.chevron_left),
+                                color: cyan,
+                                tooltip: l10n.prevDay,
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: TextButton(
+                                    onPressed: _pickDate,
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: cyan,
+                                      shape: const RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.zero,
                                       ),
-                                      child: Text(
-                                        _dayLabel(_selectedDay),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1.2,
-                                          fontFamily: 'monospace',
-                                        ),
+                                    ),
+                                    child: Text(
+                                      _dayLabel(_selectedDay),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1.2,
+                                        fontFamily: 'monospace',
                                       ),
                                     ),
                                   ),
                                 ),
-                                IconButton(
-                                  onPressed: () => _shiftDay(1),
-                                  icon: const Icon(Icons.chevron_right),
-                                  color: cyan,
-                                  tooltip: l10n.nextDay,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              l10n.nutritionDailyProgress,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.0,
-                                color: cyan.withValues(alpha: 0.9),
                               ),
-                            ),
-                            const SizedBox(height: 10),
-                            _DualMacroBar(
-                              label: l10n.nutritionProtein,
-                              consumed: _todayProtein,
-                              prognostic: _plannedProtein,
-                              target: displayTargetProtein ?? effectiveTargetProtein,
-                              unit: l10n.gramsSuffix,
-                              decimals: 1,
-                            ),
-                            const SizedBox(height: 8),
-                            _DualMacroBar(
-                              label: l10n.nutritionCarbs,
-                              consumed: _todayCarbs,
-                              prognostic: _plannedCarbs,
-                              target: displayTargetCarbs ?? effectiveTargetCarbs,
-                              unit: l10n.gramsSuffix,
-                              decimals: 1,
-                            ),
-                            const SizedBox(height: 8),
-                            _DualMacroBar(
-                              label: l10n.nutritionFats,
-                              consumed: _todayFats,
-                              prognostic: _plannedFats,
-                              target: displayTargetFats ?? effectiveTargetFats,
-                              unit: l10n.gramsSuffix,
-                              decimals: 1,
-                            ),
-                            const SizedBox(height: 8),
-                            _DualMacroBar(
-                              label: l10n.nutritionCal,
-                              consumed: _todayCalories.toDouble(),
-                              prognostic: _plannedCalories.toDouble(),
-                              target: (displayTargetCalories ?? effectiveTargetCalories)
-                                  .toDouble(),
-                              unit: '',
-                              decimals: 0,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.all(12),
-                        children: [
-                          if (_dailyRecords.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Text(
-                                _isSelectedDayToday()
-                                    ? l10n.fuelNoMealsToday
-                                    : l10n.fuelNoMealsForDay(_dayLabel(_selectedDay)),
-                                style: const TextStyle(
-                                  color: Color(0x8800F3FF),
-                                  fontFamily: 'monospace',
-                                  fontSize: 11,
-                                  height: 1.35,
-                                ),
+                              IconButton(
+                                onPressed: () => _shiftDay(1),
+                                icon: const Icon(Icons.chevron_right),
+                                color: cyan,
+                                tooltip: l10n.nextDay,
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            l10n.nutritionDailyProgress,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.0,
+                              color: cyan.withValues(alpha: 0.9),
                             ),
-                          for (final meal in <String>[
-                            'BREAKFAST',
-                            'LUNCH',
-                            'DINNER',
-                            ...extras,
-                          ])
-                            _MealLogSection(
-                              title: localizedMealSectionTitle(l10n, meal),
-                              entries: () {
-                                final dailyLogs =
-                                    grouped[meal] ?? const <_DailyRecord>[];
-                                final sortedLogs =
-                                    List<_DailyRecord>.from(dailyLogs);
-                                sortedLogs.sort(
-                                  (a, b) =>
-                                      a.consumedAt.compareTo(b.consumedAt),
-                                );
-                                return sortedLogs;
-                              }(),
-                              onPlanMeal: () => _planMealFlow(meal),
-                              toItemMap: (e) => _foodItemToMap(e, l10n),
-                              buildFoodItemRow: _buildFoodItemRow,
-                            ),
-                          const SizedBox(height: 16),
-                          OutlinedButton(
-                            onPressed: () async {
-                              // Global quick-add for snacks / extras.
-                              const mt = 'EXTRA:SNACK';
-                              await _planMealFlow(mt);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: cyan,
-                              side: const BorderSide(color: cyan, width: 1),
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.zero,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 14,
-                                horizontal: 8,
-                              ),
-                            ),
-                            child: Text(
-                              l10n.actionAddExtra,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontFamily: 'monospace',
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.0,
-                              ),
-                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _DualMacroBar(
+                            label: l10n.nutritionProtein,
+                            consumed: _todayProtein,
+                            prognostic: _plannedProtein,
+                            target:
+                                displayTargetProtein ?? effectiveTargetProtein,
+                            unit: l10n.gramsSuffix,
+                            decimals: 1,
+                          ),
+                          const SizedBox(height: 8),
+                          _DualMacroBar(
+                            label: l10n.nutritionCarbs,
+                            consumed: _todayCarbs,
+                            prognostic: _plannedCarbs,
+                            target: displayTargetCarbs ?? effectiveTargetCarbs,
+                            unit: l10n.gramsSuffix,
+                            decimals: 1,
+                          ),
+                          const SizedBox(height: 8),
+                          _DualMacroBar(
+                            label: l10n.nutritionFats,
+                            consumed: _todayFats,
+                            prognostic: _plannedFats,
+                            target: displayTargetFats ?? effectiveTargetFats,
+                            unit: l10n.gramsSuffix,
+                            decimals: 1,
+                          ),
+                          const SizedBox(height: 8),
+                          _DualMacroBar(
+                            label: l10n.nutritionCal,
+                            consumed: _todayCalories.toDouble(),
+                            prognostic: _plannedCalories.toDouble(),
+                            target:
+                                (displayTargetCalories ??
+                                        effectiveTargetCalories)
+                                    .toDouble(),
+                            unit: '',
+                            decimals: 0,
                           ),
                         ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.all(12),
+                      children: [
+                        if (_dailyRecords.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              _isSelectedDayToday()
+                                  ? l10n.fuelNoMealsToday
+                                  : l10n.fuelNoMealsForDay(
+                                      _dayLabel(_selectedDay),
+                                    ),
+                              style: const TextStyle(
+                                color: Color(0x8800F3FF),
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        for (final meal in <String>[
+                          'BREAKFAST',
+                          'LUNCH',
+                          'DINNER',
+                          ...extras,
+                        ])
+                          _MealLogSection(
+                            title: localizedMealSectionTitle(l10n, meal),
+                            entries: () {
+                              final dailyLogs =
+                                  grouped[meal] ?? const <_DailyRecord>[];
+                              final sortedLogs = List<_DailyRecord>.from(
+                                dailyLogs,
+                              );
+                              sortedLogs.sort(
+                                (a, b) => a.consumedAt.compareTo(b.consumedAt),
+                              );
+                              return sortedLogs;
+                            }(),
+                            onPlanMeal: () => _planMealFlow(meal),
+                            toItemMap: (e) => _foodItemToMap(e, l10n),
+                            buildFoodItemRow: _buildFoodItemRow,
+                          ),
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: () async {
+                            // Global quick-add for snacks / extras.
+                            const mt = 'EXTRA:SNACK';
+                            await _planMealFlow(mt);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: cyan,
+                            side: const BorderSide(color: cyan, width: 1),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.zero,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                              horizontal: 8,
+                            ),
+                          ),
+                          child: Text(
+                            l10n.actionAddExtra,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -1291,7 +1308,7 @@ class _MealLogSection extends StatefulWidget {
   final VoidCallback onPlanMeal;
   final Map<String, dynamic> Function(_DailyRecord e) toItemMap;
   final Widget Function(BuildContext context, Map<String, dynamic> item)
-      buildFoodItemRow;
+  buildFoodItemRow;
 
   const _MealLogSection({
     required this.title,
@@ -1366,8 +1383,14 @@ class _NotchedFramePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final r = Rect.fromLTWH(0, 0, size.width, size.height);
-    final leftNotch = (notchCenterX - notchWidth / 2).clamp(6.0, size.width - 6.0);
-    final rightNotch = (notchCenterX + notchWidth / 2).clamp(6.0, size.width - 6.0);
+    final leftNotch = (notchCenterX - notchWidth / 2).clamp(
+      6.0,
+      size.width - 6.0,
+    );
+    final rightNotch = (notchCenterX + notchWidth / 2).clamp(
+      6.0,
+      size.width - 6.0,
+    );
 
     // Top border (split around notch). Draw at y=0, leave the notch gap.
     canvas.drawLine(const Offset(0, 0), Offset(leftNotch, 0), p);
@@ -1409,14 +1432,12 @@ class _MealLogSectionState extends State<_MealLogSection> {
     final onPlanMeal = widget.onPlanMeal;
     final title = widget.title;
 
-    final planned = entries
-        .where((e) => toItemMap(e)['consumed_at'] == null)
-        .toList()
-      ..sort((a, b) => a.consumedAt.compareTo(b.consumedAt));
-    final consumed = entries
-        .where((e) => toItemMap(e)['consumed_at'] != null)
-        .toList()
-      ..sort((a, b) => a.consumedAt.compareTo(b.consumedAt));
+    final planned =
+        entries.where((e) => toItemMap(e)['consumed_at'] == null).toList()
+          ..sort((a, b) => a.consumedAt.compareTo(b.consumedAt));
+    final consumed =
+        entries.where((e) => toItemMap(e)['consumed_at'] != null).toList()
+          ..sort((a, b) => a.consumedAt.compareTo(b.consumedAt));
 
     final subAll = <double>[0, 0, 0, 0];
     for (final e in entries) {
@@ -1490,20 +1511,26 @@ class _MealLogSectionState extends State<_MealLogSection> {
                               IconButton(
                                 onPressed: () =>
                                     setState(() => _detailed = !_detailed),
-                                padding: const EdgeInsets.all(8),
-                                iconSize: 28,
-                                constraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(52, 52),
+                                  padding: const EdgeInsets.all(13),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.padded,
                                 ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 52,
+                                  minHeight: 52,
+                                ),
+                                iconSize: 26,
                                 icon: Icon(
                                   _detailed
                                       ? Icons.visibility_off
                                       : Icons.visibility,
-                                  size: 28,
+                                  size: 26,
                                   color: _detailed
-                                      ? const Color(0xFF00F3FF)
-                                      : const Color(0xFF88CCFF),
+                                      ? AppColors.cyberGold
+                                          .withValues(alpha: 0.75)
+                                      : AppColors.cyberGold,
                                 ),
                                 tooltip: _detailed
                                     ? 'Hide details'
@@ -1527,12 +1554,7 @@ class _MealLogSectionState extends State<_MealLogSection> {
                           if (_detailed) ...[
                             const SizedBox(height: 4),
                             Text(
-                              '${l10n.subtotal}  ${l10n.fuelMacrosLine(
-                                subAll[0].toStringAsFixed(1),
-                                subAll[1].toStringAsFixed(1),
-                                subAll[2].toStringAsFixed(1),
-                                subAll[3].round().toString(),
-                              )}',
+                              '${l10n.subtotal}  ${l10n.fuelMacrosLine(subAll[0].toStringAsFixed(1), subAll[1].toStringAsFixed(1), subAll[2].toStringAsFixed(1), subAll[3].round().toString())}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 letterSpacing: 0.6,
@@ -1541,7 +1563,10 @@ class _MealLogSectionState extends State<_MealLogSection> {
                             if (planned.isNotEmpty || consumed.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
-                                l10n.formatMacroCompare(subConsumed, subPlanned),
+                                l10n.formatMacroCompare(
+                                  subConsumed,
+                                  subPlanned,
+                                ),
                                 style: const TextStyle(
                                   fontSize: 10,
                                   letterSpacing: 0.4,
@@ -1575,14 +1600,12 @@ class _MealLogSectionState extends State<_MealLogSection> {
                               ),
                               const SizedBox(height: 6),
                               for (final e in planned)
-                                buildFoodItemRow(
-                                  context,
-                                  {
-                                    ...toItemMap(e),
-                                    'show_macros': _detailed,
-                                  },
-                                ),
-                              if (consumed.isNotEmpty) const SizedBox(height: 8),
+                                buildFoodItemRow(context, {
+                                  ...toItemMap(e),
+                                  'show_macros': _detailed,
+                                }),
+                              if (consumed.isNotEmpty)
+                                const SizedBox(height: 8),
                             ],
                             if (consumed.isNotEmpty) ...[
                               Text(
@@ -1595,13 +1618,10 @@ class _MealLogSectionState extends State<_MealLogSection> {
                               ),
                               const SizedBox(height: 6),
                               for (final e in consumed)
-                                buildFoodItemRow(
-                                  context,
-                                  {
-                                    ...toItemMap(e),
-                                    'show_macros': _detailed,
-                                  },
-                                ),
+                                buildFoodItemRow(context, {
+                                  ...toItemMap(e),
+                                  'show_macros': _detailed,
+                                }),
                             ],
                           ],
                         ],
@@ -1716,7 +1736,10 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      style: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                      ),
                       decoration: InputDecoration(
                         labelText: widget.foodLabel,
                         enabledBorder: const OutlineInputBorder(
@@ -1793,7 +1816,9 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
                     activeThumbColor: cyan,
                     onChanged: (v) => setState(() {
                       _repeatEnabled = v;
-                      if (v && _repeatCtrl.text.trim().isEmpty) _repeatCtrl.text = '2';
+                      if (v && _repeatCtrl.text.trim().isEmpty) {
+                        _repeatCtrl.text = '2';
+                      }
                     }),
                   ),
                 ],
@@ -1826,15 +1851,14 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
         TextButton(
           onPressed: () =>
               Navigator.of(context).pop<
-                  ({
-                    String grams,
-                    TimeOfDay? intakeTime,
-                    ReminderState reminder,
-                    String unit,
-                    int repeatDays,
-                  })?>(
-            null,
-          ),
+                ({
+                  String grams,
+                  TimeOfDay? intakeTime,
+                  ReminderState reminder,
+                  String unit,
+                  int repeatDays,
+                })?
+              >(null),
           child: Text(loc.cancel),
         ),
         TextButton(
@@ -1844,15 +1868,13 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
               final parsed = int.tryParse(_repeatCtrl.text.trim());
               if (parsed != null && parsed > 0) repeat = parsed;
             }
-            Navigator.of(context).pop(
-              (
-                grams: _controller.text.trim(),
-                intakeTime: _intakeTime,
-                reminder: _reminder,
-                unit: _unit,
-                repeatDays: repeat,
-              ),
-            );
+            Navigator.of(context).pop((
+              grams: _controller.text.trim(),
+              intakeTime: _intakeTime,
+              reminder: _reminder,
+              unit: _unit,
+              repeatDays: repeat,
+            ));
           },
           child: Text(loc.ok),
         ),
@@ -1903,8 +1925,9 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
     final edit = widget.editingRecord;
     if (edit != null) {
       final g = edit.amountGrams;
-      final text =
-          g == g.roundToDouble() ? g.toInt().toString() : g.toStringAsFixed(1);
+      final text = g == g.roundToDouble()
+          ? g.toInt().toString()
+          : g.toStringAsFixed(1);
       _gramsEditCtrl = TextEditingController(text: text);
       _editConsumedAtLocal =
           DateTime.tryParse(edit.consumedAt)?.toLocal() ?? DateTime.now();
@@ -1938,12 +1961,11 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
 
   Future<void> _openBarcodeFlow() async {
     if (!mounted) return;
-    final code = await Navigator.of(context).push<String?>(
-      MaterialPageRoute(
-        builder: (_) => const _BarcodeScannerScreen(),
-      ),
+    final res = await BarcodeScannerScreen.pushForResult(
+      context,
+      pickCodeOnly: true,
     );
-    final barcode = (code ?? '').trim();
+    final barcode = (res?['barcode'] ?? '').toString().trim();
     if (barcode.isEmpty || !mounted) return;
 
     try {
@@ -1958,6 +1980,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
         return;
       }
 
+      if (!mounted) return;
       final created = await showDialog<_FoodPick?>(
         context: context,
         builder: (_) => _OffAddIngredientDialog(product: prod),
@@ -2009,8 +2032,9 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
         : s(product['generic_name']);
     if (name.trim().isEmpty) return null;
     final nutr = product['nutriments'];
-    final nutriments =
-        (nutr is Map<String, dynamic>) ? nutr : const <String, dynamic>{};
+    final nutriments = (nutr is Map<String, dynamic>)
+        ? nutr
+        : const <String, dynamic>{};
 
     final kcal = d(nutriments['energy-kcal_100g']);
     final p = d(nutriments['proteins_100g']);
@@ -2062,7 +2086,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
     try {
       final uid = _client.auth.currentUser?.id;
       if (uid == null) {
-        if (!context.mounted) return;
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.l10n.msgSignInLogFood),
@@ -2093,7 +2117,10 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
           'user_id': uid,
           'created_at': intakeI.toUtc().toIso8601String(),
           'scheduled_at': intakeI.toUtc().toIso8601String(),
-          if (item.type == _FoodType.ingredient) 'ingredient_id': item.id else 'recipe_id': item.id,
+          if (item.type == _FoodType.ingredient)
+            'ingredient_id': item.id
+          else
+            'recipe_id': item.id,
           'amount_grams': grams,
           'unit': unit,
           'meal_type': widget.mealType,
@@ -2105,13 +2132,19 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
         reminderLocals.add(reminderI);
       }
 
-      final inserted = await _client.from(widget.logsTable).insert(rows).select('id');
+      final inserted = await _client
+          .from(widget.logsTable)
+          .insert(rows)
+          .select('id');
       final insertedList = (inserted as List).cast<Map<String, dynamic>>();
+
+      if (!mounted) return;
 
       for (var i = 0; i < insertedList.length; i++) {
         final newId = (insertedList[i]['id'] ?? '').toString().trim();
         final rLocal = (i < reminderLocals.length) ? reminderLocals[i] : null;
         if (rLocal != null && newId.isNotEmpty) {
+          if (!mounted) return;
           final target = intakeLocal.add(Duration(days: i));
           await NotificationService.scheduleByKey(
             key: 'daily_logs:$newId',
@@ -2128,14 +2161,14 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
         }
       }
 
-      if (!context.mounted) return;
+      if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e, st) {
       // ignore: avoid_print
       print('FOOD LOG FLOW ERROR: $e');
       // ignore: avoid_print
       print('STACKTRACE: $st');
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(supabaseWriteErrorMessage(e)),
@@ -2153,14 +2186,20 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
     });
 
     try {
-      final ingredientsData =
-          await _client.from('ingredients').select().order('name').limit(500);
-      final recipesData =
-          await _client.from('recipes').select('id,name').order('name').limit(500);
+      final ingredientsData = await _client
+          .from('ingredients')
+          .select()
+          .order('name')
+          .limit(500);
+      final recipesData = await _client
+          .from('recipes')
+          .select('id,name')
+          .order('name')
+          .limit(500);
       if (!mounted || rid != _requestId) return;
 
-      final ingredientRows =
-          (ingredientsData as List).cast<Map<String, dynamic>>();
+      final ingredientRows = (ingredientsData as List)
+          .cast<Map<String, dynamic>>();
       final recipeRows = (recipesData as List).cast<Map<String, dynamic>>();
 
       double asDouble(dynamic v) {
@@ -2185,27 +2224,33 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
       }
 
       final picks = <_FoodPick>[
-        ...ingredientRows.map((r) => _FoodPick(
-              id: (r['id'] ?? '').toString(),
-              name: (r['name'] ?? '').toString(),
-              type: _FoodType.ingredient,
-              proteinPer100g: asDouble(r['protein_per_100g']),
-              carbsPer100g: asDouble(r['carbs_per_100g']),
-              fatPer100g: asDouble(r['fat_per_100g']),
-              caloriesPer100g: asDouble(r['calories_per_100g']),
-              isGlutenFree: asBool(r['is_gluten_free']),
-              glycemicIndex: asIntOrNull(r['glycemic_index']),
-              allergenLevel: Ingredient.parseAllergenLevel(r['allergen_level']),
-            )),
-        ...recipeRows.map((r) => _FoodPick(
-              id: (r['id'] ?? '').toString(),
-              name: (r['name'] ?? '').toString(),
-              type: _FoodType.recipe,
-            )),
+        ...ingredientRows.map(
+          (r) => _FoodPick(
+            id: (r['id'] ?? '').toString(),
+            name: (r['name'] ?? '').toString(),
+            type: _FoodType.ingredient,
+            proteinPer100g: asDouble(r['protein_per_100g']),
+            carbsPer100g: asDouble(r['carbs_per_100g']),
+            fatPer100g: asDouble(r['fat_per_100g']),
+            caloriesPer100g: asDouble(r['calories_per_100g']),
+            isGlutenFree: asBool(r['is_gluten_free']),
+            glycemicIndex: asIntOrNull(r['glycemic_index']),
+            allergenLevel: Ingredient.parseAllergenLevel(r['allergen_level']),
+          ),
+        ),
+        ...recipeRows.map(
+          (r) => _FoodPick(
+            id: (r['id'] ?? '').toString(),
+            name: (r['name'] ?? '').toString(),
+            type: _FoodType.recipe,
+          ),
+        ),
       ];
 
       final sorted = List<_FoodPick>.from(picks);
-      sorted.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      sorted.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
       setState(() {
         _all = sorted;
         _results = _all;
@@ -2255,7 +2300,8 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
     const cyan = Color(0xFF00F3FF);
     final query = q.trim();
     if (query.isEmpty) {
-      return [const TextSpan(text: '', children: [])]..clear()
+      return [const TextSpan(text: '', children: [])]
+        ..clear()
         ..add(TextSpan(text: text));
     }
     final lower = text.toLowerCase();
@@ -2282,9 +2328,9 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
     final v = double.tryParse(raw);
     if (v == null || v <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.msgValidAmountGrams)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.msgValidAmountGrams)));
       return;
     }
     try {
@@ -2301,19 +2347,26 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
       }
       final consumedLocal = _editConsumedAtLocal ?? DateTime.now();
       final reminderLocal = _computeEditReminderAtLocal();
-      await _client.from(widget.logsTable).update({
-        'user_id': uid,
-        'amount_grams': v,
-        'consumed_at': consumedLocal.toUtc().toIso8601String(),
-        'scheduled_at': consumedLocal.toUtc().toIso8601String(),
-        'created_at': consumedLocal.toUtc().toIso8601String(),
-        'reminder_at': reminderLocal?.toUtc().toIso8601String(),
-        'reminder_offset_minutes': _editReminderMode == _EditReminderMode.minutesBefore
-            ? _editMinutesBefore
-            : (_editReminderMode == _EditReminderMode.none ? null : 0),
-      }).eq('id', e.id).eq('user_id', uid);
+      await _client
+          .from(widget.logsTable)
+          .update({
+            'user_id': uid,
+            'amount_grams': v,
+            'consumed_at': consumedLocal.toUtc().toIso8601String(),
+            'scheduled_at': consumedLocal.toUtc().toIso8601String(),
+            'created_at': consumedLocal.toUtc().toIso8601String(),
+            'reminder_at': reminderLocal?.toUtc().toIso8601String(),
+            'reminder_offset_minutes':
+                _editReminderMode == _EditReminderMode.minutesBefore
+                ? _editMinutesBefore
+                : (_editReminderMode == _EditReminderMode.none ? null : 0),
+          })
+          .eq('id', e.id)
+          .eq('user_id', uid);
 
+      if (!mounted) return;
       await NotificationService.cancelByKey('daily_logs:${e.id}');
+      if (!mounted) return;
       if (reminderLocal != null) {
         final name = e.recipeId.isNotEmpty
             ? (e.recipe?.name ?? context.l10n.recipe)
@@ -2323,12 +2376,12 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
           title: context.l10n.reminderTitleMeal(name),
           body: context.l10n.reminderBody,
           whenLocal: reminderLocal,
-        payload: {
-          'item_type': 'food',
-          'item_id': e.id,
-          'target_date':
-              '${consumedLocal.year.toString().padLeft(4, '0')}-${consumedLocal.month.toString().padLeft(2, '0')}-${consumedLocal.day.toString().padLeft(2, '0')}',
-        },
+          payload: {
+            'item_type': 'food',
+            'item_id': e.id,
+            'target_date':
+                '${consumedLocal.year.toString().padLeft(4, '0')}-${consumedLocal.month.toString().padLeft(2, '0')}-${consumedLocal.day.toString().padLeft(2, '0')}',
+          },
         );
       }
       if (!mounted) return;
@@ -2357,8 +2410,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
       final name = edit.recipeId.isNotEmpty
           ? (edit.recipe?.name ?? loc.recipe)
           : (edit.ingredient?.name ?? loc.ingredient);
-      final typeLabel =
-          edit.recipeId.isNotEmpty ? loc.recipe : loc.ingredient;
+      final typeLabel = edit.recipeId.isNotEmpty ? loc.recipe : loc.ingredient;
 
       return Scaffold(
         backgroundColor: bg,
@@ -2466,7 +2518,10 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                     TextField(
                       controller: _gramsEditCtrl,
                       keyboardType: TextInputType.number,
-                      style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      style: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                      ),
                       decoration: InputDecoration(
                         labelText: loc.fuelAmountGrams,
                         enabledBorder: const OutlineInputBorder(
@@ -2483,7 +2538,8 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                     const SizedBox(height: 24),
                     _EditReminderSection(
                       mode: _editReminderMode,
-                      onModeChanged: (m) => setState(() => _editReminderMode = m),
+                      onModeChanged: (m) =>
+                          setState(() => _editReminderMode = m),
                       specificTime: _editSpecificReminder,
                       onPickSpecific: () async {
                         final picked = await showTimePicker(
@@ -2570,7 +2626,10 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                   child: TextField(
                     controller: _controller,
                     onChanged: _applyFilter,
-                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    style: const TextStyle(
+                      color: cyan,
+                      fontFamily: 'monospace',
+                    ),
                     decoration: InputDecoration(
                       hintText: loc.searchHint,
                       hintStyle: const TextStyle(
@@ -2595,7 +2654,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                   tooltip: 'Scan barcode',
                   onPressed: _openBarcodeFlow,
                   icon: const Icon(Icons.qr_code_scanner),
-                  color: const Color(0xFFCBAB67),
+                  color: AppColors.cyberGold,
                 ),
               ],
             ),
@@ -2605,78 +2664,78 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: SelectableText(
-                          _error.toString(),
-                          style: const TextStyle(color: cyan),
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SelectableText(
+                      _error.toString(),
+                      style: const TextStyle(color: cyan),
+                    ),
+                  )
+                : _results.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            loc.noItemsFound,
+                            style: const TextStyle(
+                              color: cyan,
+                              fontFamily: 'monospace',
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _results.length,
+                    itemBuilder: (context, index) {
+                      final item = _results[index];
+                      return ListTile(
+                        leading: Icon(
+                          item.type == _FoodType.ingredient
+                              ? Icons.egg
+                              : Icons.outdoor_grill,
+                          color: cyan,
                         ),
-                      )
-                    : _results.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    loc.noItemsFound,
-                                    style: const TextStyle(
-                                      color: cyan,
-                                      fontFamily: 'monospace',
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
-                                ],
+                        title: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(
+                              color: Color(0xAA00F3FF),
+                              fontFamily: 'monospace',
+                              letterSpacing: 0.6,
+                            ),
+                            children: _highlight(item.name, _q),
+                          ),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.listMacroSubtitle(loc),
+                              style: const TextStyle(
+                                color: Color(0xFF757575),
+                                fontFamily: 'monospace',
+                                fontSize: 12,
                               ),
                             ),
-                          )
-                        : ListView.builder(
-                            itemCount: _results.length,
-                            itemBuilder: (context, index) {
-                              final item = _results[index];
-                              return ListTile(
-                                leading: Icon(
-                                  item.type == _FoodType.ingredient
-                                      ? Icons.egg
-                                      : Icons.outdoor_grill,
-                                  color: cyan,
-                                ),
-                                title: RichText(
-                                  text: TextSpan(
-                                    style: const TextStyle(
-                                      color: Color(0xAA00F3FF),
-                                      fontFamily: 'monospace',
-                                      letterSpacing: 0.6,
-                                    ),
-                                    children: _highlight(item.name, _q),
-                                  ),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.listMacroSubtitle(loc),
-                                      style: const TextStyle(
-                                        color: Color(0xFF757575),
-                                        fontFamily: 'monospace',
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    if (item.showsDietBadges) ...[
-                                      const SizedBox(height: 4),
-                                      DietIndicatorBadges(
-                                        isGlutenFree: item.isGlutenFree,
-                                        glycemicIndex: item.glycemicIndex,
-                                        allergenLevel: item.allergenLevel,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                onTap: () async => _handleFoodPickTap(item),
-                              );
-                            },
-                          ),
+                            if (item.showsDietBadges) ...[
+                              const SizedBox(height: 4),
+                              DietIndicatorBadges(
+                                isGlutenFree: item.isGlutenFree,
+                                glycemicIndex: item.glycemicIndex,
+                                allergenLevel: item.allergenLevel,
+                              ),
+                            ],
+                          ],
+                        ),
+                        onTap: () async => _handleFoodPickTap(item),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -2684,24 +2743,28 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
   }
 
   Future<
-      ({
-        double grams,
-        TimeOfDay? intakeTime,
-        ReminderState reminder,
-        String unit,
-        int repeatDays,
-      })?> _promptGrams(String label) async {
-    final res = await showDialog<
-        ({
-          String grams,
-          TimeOfDay? intakeTime,
-          ReminderState reminder,
-          String unit,
-          int repeatDays,
-        })?>(
-      context: context,
-      builder: (context) => _FuelGramsDialog(foodLabel: label),
-    );
+    ({
+      double grams,
+      TimeOfDay? intakeTime,
+      ReminderState reminder,
+      String unit,
+      int repeatDays,
+    })?
+  >
+  _promptGrams(String label) async {
+    final res =
+        await showDialog<
+          ({
+            String grams,
+            TimeOfDay? intakeTime,
+            ReminderState reminder,
+            String unit,
+            int repeatDays,
+          })?
+        >(
+          context: context,
+          builder: (context) => _FuelGramsDialog(foodLabel: label),
+        );
     if (res == null) return null;
     final raw = res.grams.trim();
     if (raw.isEmpty) return null;
@@ -2745,10 +2808,13 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
 class _DailyRecord {
   final String id;
   final String mealType;
+
   /// Sort key / legacy slot; prefer [scheduledAt] and [consumedEventAt] for display.
   final String consumedAt;
+
   /// Planned time (`scheduled_at` or fallback to slot in `consumed_at`).
   final String scheduledAt;
+
   /// Actual consumption instant when [isConsumed] (from `consumed_at`).
   final String consumedEventAt;
   final String reminderAt;
@@ -2797,13 +2863,13 @@ class _Recipe {
   });
 
   const _Recipe.empty()
-      : id = '',
-        name = '',
-        calories = null,
-        protein = null,
-        carbs = null,
-        fats = null,
-        recipeIngredients = const [];
+    : id = '',
+      name = '',
+      calories = null,
+      protein = null,
+      carbs = null,
+      fats = null,
+      recipeIngredients = const [];
 
   factory _Recipe.fromJson(Map<String, dynamic> json) {
     double? asD(dynamic v) {
@@ -2813,10 +2879,21 @@ class _Recipe {
     }
 
     // Try a few common column names for manual macros.
-    final calories = asD(json['calories']) ?? asD(json['calories_kcal']) ?? asD(json['calories_total']);
-    final protein = asD(json['protein']) ?? asD(json['protein_g']) ?? asD(json['protein_total']);
-    final carbs = asD(json['carbs']) ?? asD(json['carbs_g']) ?? asD(json['carbs_total']);
-    final fats = asD(json['fats']) ?? asD(json['fat']) ?? asD(json['fat_g']) ?? asD(json['fats_total']);
+    final calories =
+        asD(json['calories']) ??
+        asD(json['calories_kcal']) ??
+        asD(json['calories_total']);
+    final protein =
+        asD(json['protein']) ??
+        asD(json['protein_g']) ??
+        asD(json['protein_total']);
+    final carbs =
+        asD(json['carbs']) ?? asD(json['carbs_g']) ?? asD(json['carbs_total']);
+    final fats =
+        asD(json['fats']) ??
+        asD(json['fat']) ??
+        asD(json['fat_g']) ??
+        asD(json['fats_total']);
 
     final riRaw = json['recipe_ingredients'];
     final ri = <_RecipeIngredient>[];
@@ -2840,7 +2917,9 @@ class _Recipe {
   }
 
   _Totals? get manualTotals {
-    if (calories == null && protein == null && carbs == null && fats == null) return null;
+    if (calories == null && protein == null && carbs == null && fats == null) {
+      return null;
+    }
     return _Totals(
       protein: protein ?? 0.0,
       carbs: carbs ?? 0.0,
@@ -2965,108 +3044,14 @@ class _OffProduct {
   });
 }
 
-class _BarcodeScannerScreen extends StatefulWidget {
-  const _BarcodeScannerScreen();
-
-  @override
-  State<_BarcodeScannerScreen> createState() => _BarcodeScannerScreenState();
-}
-
-class _BarcodeScannerScreenState extends State<_BarcodeScannerScreen> {
-  bool _popped = false;
-  final _controller = MobileScannerController(
-    facing: CameraFacing.back,
-    detectionSpeed: DetectionSpeed.normal,
-  );
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _popOnce(String code) {
-    if (_popped) return;
-    _popped = true;
-    Navigator.of(context).pop(code);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    const bg = Color(0xFF050510);
-    const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
-
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        title: const Text(
-          'SCAN BARCODE',
-          style: TextStyle(fontFamily: 'monospace'),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Toggle torch',
-            onPressed: () => _controller.toggleTorch(),
-            icon: const Icon(Icons.flash_on),
-            color: gold,
-          ),
-          IconButton(
-            tooltip: 'Switch camera',
-            onPressed: () => _controller.switchCamera(),
-            icon: const Icon(Icons.cameraswitch),
-            color: cyan,
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          MobileScanner(
-            controller: _controller,
-            onDetect: (capture) {
-              if (_popped) return;
-              final codes = capture.barcodes;
-              if (codes.isEmpty) return;
-              final raw = codes.first.rawValue ?? '';
-              final code = raw.trim();
-              if (code.isEmpty) return;
-              _popOnce(code);
-            },
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: const BoxDecoration(
-                color: Color(0xAA050510),
-                border: Border(top: BorderSide(color: cyan, width: 2)),
-              ),
-              child: const Text(
-                'Point the camera at a barcode.\nWe will fetch the product from Open Food Facts.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cyan,
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                  height: 1.35,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _OffAddIngredientDialog extends StatefulWidget {
   final _OffProduct product;
 
   const _OffAddIngredientDialog({required this.product});
 
   @override
-  State<_OffAddIngredientDialog> createState() => _OffAddIngredientDialogState();
+  State<_OffAddIngredientDialog> createState() =>
+      _OffAddIngredientDialogState();
 }
 
 class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
@@ -3113,9 +3098,9 @@ class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
     final uid = _client.auth.currentUser?.id;
     if (uid == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.msgSignInSave)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.msgSignInSave)));
       return;
     }
 
@@ -3126,7 +3111,7 @@ class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
       builder: (ctx) {
         const bg = Color(0xFF050510);
         const cyan = Color(0xFF00F3FF);
-        const gold = Color(0xFFCBAB67);
+        const gold = AppColors.cyberGold;
         return AlertDialog(
           backgroundColor: bg,
           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
@@ -3188,7 +3173,9 @@ class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
       final inserted = await _client
           .from('ingredients')
           .insert(payload)
-          .select('id,name,calories_per_100g,protein_per_100g,carbs_per_100g,fat_per_100g');
+          .select(
+            'id,name,calories_per_100g,protein_per_100g,carbs_per_100g,fat_per_100g',
+          );
       final rows = (inserted as List).cast<Map<String, dynamic>>();
       if (rows.isEmpty) {
         throw Exception('Insert returned no rows');
@@ -3251,7 +3238,7 @@ class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
+    const gold = AppColors.cyberGold;
     final accent = gold;
 
     return AlertDialog(
@@ -3298,15 +3285,16 @@ class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
               const SizedBox(height: 10),
               TextFormField(
                 controller: _kcal,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 style: const TextStyle(color: cyan, fontFamily: 'monospace'),
                 decoration: _dec('Energy (kcal)', accent),
                 validator: (v) =>
                     double.tryParse((v ?? '').trim().replaceAll(',', '.')) ==
-                            null
-                        ? 'Number'
-                        : null,
+                        null
+                    ? 'Number'
+                    : null,
               ),
               const SizedBox(height: 10),
               Row(
@@ -3314,10 +3302,13 @@ class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
                   Expanded(
                     child: TextFormField(
                       controller: _p,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      style:
-                          const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      style: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                      ),
                       decoration: _dec('Protein (g)', accent),
                     ),
                   ),
@@ -3325,10 +3316,13 @@ class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
                   Expanded(
                     child: TextFormField(
                       controller: _c,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      style:
-                          const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      style: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                      ),
                       decoration: _dec('Carbs (g)', accent),
                     ),
                   ),
@@ -3337,8 +3331,9 @@ class _OffAddIngredientDialogState extends State<_OffAddIngredientDialog> {
               const SizedBox(height: 10),
               TextFormField(
                 controller: _f,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 style: const TextStyle(color: cyan, fontFamily: 'monospace'),
                 decoration: _dec('Fats (g)', accent),
               ),
@@ -3501,8 +3496,10 @@ class _EditReminderSection extends StatelessWidget {
                   decoration: const InputDecoration(
                     hintText: '30',
                     isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
                     border: InputBorder.none,
                   ),
                 ),
@@ -3543,6 +3540,7 @@ class _EditReminderSection extends StatelessWidget {
     );
   }
 }
+
 /// One bar: full width = daily target; solid = consumed; dashed/ghost = planned slice;
 /// gold strip at trailing edge = goal marker.
 class _UnifiedMacroBarPainter extends CustomPainter {
@@ -3628,7 +3626,7 @@ class _UnifiedMacroBarPainter extends CustomPainter {
 
     canvas.drawRect(
       Rect.fromLTWH(w - 2, 0, 2, h),
-      Paint()..color = const Color(0xFFFFC107),
+      Paint()..color = AppColors.cyberGold,
     );
   }
 
@@ -3668,12 +3666,13 @@ class _DualMacroBar extends StatelessWidget {
     if (t.contains('carb') || t.contains('въг')) return 'CHO';
     if (t.contains('fat') || t.contains('маз')) return 'FAT';
     if (t.contains('cal')) return 'KCAL';
-    return raw.length > 6 ? raw.substring(0, 6).toUpperCase() : raw.toUpperCase();
+    return raw.length > 6
+        ? raw.substring(0, 6).toUpperCase()
+        : raw.toUpperCase();
   }
 
   @override
   Widget build(BuildContext context) {
-    const amber = Color(0xFFFFC107);
     final t = target > 0 ? target : 1.0;
     final u = unit.isEmpty ? '' : unit;
     final plannedPending = math.max(0.0, prognostic - consumed);
@@ -3706,7 +3705,7 @@ class _DualMacroBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: amber,
+                    color: AppColors.cyberGold,
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.bold,
                     fontSize: 11,
@@ -3733,4 +3732,3 @@ class _DualMacroBar extends StatelessWidget {
 ///
 /// Collapsed: name + calories.
 /// Expanded: macros row + [TAKE] [EDIT] [DELETE] actions.
-

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
 import 'core/config/app_config.dart';
+import 'core/supabase/library_schema_probe.dart';
 import 'core/theme/app_theme.dart';
 import 'core/bootstrap/user_bootstrap.dart';
 import 'core/debug/agent_debug_log.dart';
@@ -86,6 +87,12 @@ Future<void> main() async {
       );
       return;
     }
+  }
+
+  if (kDebugMode) {
+    unawaited(
+      LibrarySchemaProbe.verifyBarcodeColumnsVisible(Supabase.instance.client),
+    );
   }
 
   try {
@@ -210,10 +217,42 @@ class BioCyberOSApp extends StatefulWidget {
 }
 
 class _BioCyberOSAppState extends State<BioCyberOSApp> {
+  StreamSubscription<AuthState>? _rootAuthSub;
+
+  /// When true, [MaterialApp.home] is [AppShell] so sign-in (e.g. biometrics) cannot
+  /// leave the user stuck under a nested [AuthScreen] route.
+  bool _rootShowsShell = false;
+
   @override
   void initState() {
     super.initState();
+    _rootShowsShell =
+        Supabase.instance.client.auth.currentSession != null;
+    _rootAuthSub =
+        Supabase.instance.client.auth.onAuthStateChange.listen(_onRootAuth);
     LocaleSettings.locale.addListener(_onLocaleChanged);
+  }
+
+  void _onRootAuth(AuthState state) {
+    final e = state.event;
+    if (e == AuthChangeEvent.passwordRecovery ||
+        e.toString().toLowerCase().contains('passwordrecovery')) {
+      if (mounted) setState(() => _rootShowsShell = false);
+      return;
+    }
+    if (e == AuthChangeEvent.signedOut) {
+      if (mounted) setState(() => _rootShowsShell = false);
+      return;
+    }
+    if (e == AuthChangeEvent.signedIn && state.session != null) {
+      if (mounted) setState(() => _rootShowsShell = true);
+      return;
+    }
+    if (e == AuthChangeEvent.initialSession) {
+      if (mounted) {
+        setState(() => _rootShowsShell = state.session != null);
+      }
+    }
   }
 
   void _onLocaleChanged() {
@@ -222,6 +261,7 @@ class _BioCyberOSAppState extends State<BioCyberOSApp> {
 
   @override
   void dispose() {
+    _rootAuthSub?.cancel();
     LocaleSettings.locale.removeListener(_onLocaleChanged);
     super.dispose();
   }
@@ -240,7 +280,11 @@ class _BioCyberOSAppState extends State<BioCyberOSApp> {
         '/dashboard': (_) => AppShell(key: AppShell.shellKey),
         '/auth': (_) => const AuthScreen(),
       },
-      home: const SplashRoute(),
+      // Signed-in users: root is [AppShell] (global auth listener). Otherwise
+      // [SplashRoute] handles splash / auth / password recovery flows.
+      home: _rootShowsShell
+          ? AppShell(key: AppShell.shellKey)
+          : const SplashRoute(),
     );
   }
 }

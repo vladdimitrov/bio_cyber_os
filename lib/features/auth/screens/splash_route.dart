@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../app_shell.dart';
 import '../../../core/settings/profile_settings.dart';
+import '../../../core/theme/app_colors.dart';
 import 'auth_screen.dart';
 import 'update_password_screen.dart';
 
@@ -133,7 +134,9 @@ class _SplashRouteState extends State<SplashRoute> {
     try {
     final session = Supabase.instance.client.auth.currentSession;
     if (session == null) {
-      debugPrint('DEBUG: _bootstrapFromSession: session is null');
+      debugPrint(
+        'DEBUG: Launch gate: no valid Supabase session — navigating to AuthScreen',
+      );
       _fallbackTimer?.cancel();
       _fallbackTimer = null;
       // Must always navigate somewhere on null session.
@@ -196,12 +199,12 @@ class _SplashRouteState extends State<SplashRoute> {
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            SizedBox(height: 6),
-            _SplashLogo(),
-            SizedBox(height: 18),
-            CircularProgressIndicator(
-              color: Color(0xFFCBAB67),
+          children: [
+            const SizedBox(height: 6),
+            const _SplashLogo(),
+            const SizedBox(height: 18),
+            const CircularProgressIndicator(
+              color: AppColors.cyberGold,
               strokeWidth: 2.5,
             ),
           ],
@@ -211,17 +214,75 @@ class _SplashRouteState extends State<SplashRoute> {
   }
 }
 
-class _SplashLogo extends StatelessWidget {
+class _SplashLogo extends StatefulWidget {
   const _SplashLogo();
 
   @override
+  State<_SplashLogo> createState() => _SplashLogoState();
+}
+
+class _SplashLogoState extends State<_SplashLogo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _aura;
+
+  @override
+  void initState() {
+    super.initState();
+    _aura = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _aura.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Image.asset(
-        'assets/images/heart_logo_transparent.png',
-        height: 180,
-        fit: BoxFit.contain,
-      ),
+    return AnimatedBuilder(
+      animation: _aura,
+      builder: (context, _) {
+        final t = Curves.easeInOut.transform(_aura.value);
+        final pulse = 0.72 + 0.28 * t;
+        return Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(32),
+              boxShadow: [
+                BoxShadow(
+                  color: Color.fromRGBO(0x6A, 0x1B, 0x9A, 0.55 * pulse),
+                  blurRadius: 56,
+                  spreadRadius: 6 + 4 * t,
+                ),
+                BoxShadow(
+                  color: Color.fromRGBO(0x15, 0x64, 0xC7, 0.48 * pulse),
+                  blurRadius: 48,
+                  spreadRadius: 4 + 2 * t,
+                ),
+                BoxShadow(
+                  color: AppColors.cyberGold.withValues(alpha: 0.42 * pulse),
+                  blurRadius: 72,
+                  spreadRadius: 3 + 2 * t,
+                ),
+                BoxShadow(
+                  color: Colors.purpleAccent.withValues(alpha: 0.22 * pulse),
+                  blurRadius: 88,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Image.asset(
+              'assets/images/heart_logo_transparent.png',
+              height: 180,
+              fit: BoxFit.contain,
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -9,3 +9,7 @@
 -keep class com.ryanheise.** { *; }
 -dontwarn com.ryanheise.**
 
+# Flutter (keep app/plugin surface; silence embedding warnings during shrink)
+-keep class io.flutter.app.** { *; }
+-keep class io.flutter.plugin.** { *; }
+-dontwarn io.flutter.embedding.**

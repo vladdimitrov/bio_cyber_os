@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../food/screens/barcode_scanner_screen.dart';
 
 class AddFoodScreen extends StatefulWidget {
@@ -81,9 +82,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   }
 
   Future<void> _scanBarcodeAndFill() async {
-    final data = await Navigator.of(context).push<Map<String, dynamic>?>(
-      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-    );
+    final data = await BarcodeScannerScreen.pushForResult(context);
     if (data == null || !mounted) return;
 
     final name = (data['name'] ?? '').toString().trim();
@@ -155,7 +154,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                           onPressed: _saving ? null : _scanBarcodeAndFill,
                           icon: const Icon(Icons.qr_code_scanner),
                         ),
-                        suffixIconColor: const Color(0xFFCBAB67),
+                        suffixIconColor: AppColors.cyberGold,
                       ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) return 'Required';

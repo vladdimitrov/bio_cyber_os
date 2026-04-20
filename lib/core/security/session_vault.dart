@@ -6,9 +6,7 @@ class SessionVault {
 
   static const _kRefreshToken = 'sb_refresh_token';
 
-  static const FlutterSecureStorage _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
   static Future<void> saveFromCurrentSession() async {
     final session = Supabase.instance.client.auth.currentSession;

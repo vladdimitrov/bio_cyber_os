@@ -1,10 +1,36 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../../core/services/barcode_scanner_session_coordinator.dart';
 import '../../../core/services/open_food_facts_service.dart';
+import '../../../core/theme/app_colors.dart';
 
 class BarcodeScannerScreen extends StatefulWidget {
-  const BarcodeScannerScreen({super.key});
+  const BarcodeScannerScreen({super.key, this.pickCodeOnly = false});
+
+  /// When true, first valid scan pops with `{'barcode': code}` only (no Open Food Facts flow).
+  final bool pickCodeOnly;
+
+  /// Stops any previous session, then pushes a fresh scanner (new [State] + surface key).
+  static Future<Map<String, dynamic>?> pushForResult(
+    BuildContext context, {
+    bool pickCodeOnly = false,
+  }) async {
+    await BarcodeScannerSessionCoordinator.instance.shutdownActiveSession();
+    if (!context.mounted) return null;
+    return Navigator.of(context).push<Map<String, dynamic>?>(
+      MaterialPageRoute(
+        builder: (_) => BarcodeScannerScreen(
+          key: ValueKey(
+            Object.hash(pickCodeOnly, DateTime.now().microsecondsSinceEpoch),
+          ),
+          pickCodeOnly: pickCodeOnly,
+        ),
+      ),
+    );
+  }
 
   @override
   State<BarcodeScannerScreen> createState() => _BarcodeScannerScreenState();
@@ -12,19 +38,47 @@ class BarcodeScannerScreen extends StatefulWidget {
 
 class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
     with SingleTickerProviderStateMixin {
-  final _scannerController = MobileScannerController(
-    facing: CameraFacing.back,
-    detectionSpeed: DetectionSpeed.normal,
-  );
+  late final MobileScannerController _scannerController;
+  late final int _surfaceGeneration;
 
   bool _busy = false;
   String? _status;
 
   late final AnimationController _scanLineCtrl;
 
+  bool _isBufferQueueIssue(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('bufferqueue') || s.contains('abandon');
+  }
+
+  Future<void> _recoverFromBufferIssue() async {
+    debugPrint(
+      'DEBUG: [SCANNER] Attempting camera reset due to BufferQueue abandonment.',
+    );
+    if (!mounted) return;
+    try {
+      await _scannerController.stop();
+    } catch (_) {}
+    await Future<void>.delayed(const Duration(milliseconds: 160));
+    if (!mounted) return;
+    try {
+      await _scannerController.start();
+    } catch (e) {
+      debugPrint('DEBUG: [SCANNER] Camera restart after BufferQueue failed: $e');
+    }
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    _surfaceGeneration = DateTime.now().microsecondsSinceEpoch;
+    _scannerController = MobileScannerController(
+      facing: CameraFacing.back,
+      detectionSpeed: DetectionSpeed.normal,
+    );
+    BarcodeScannerSessionCoordinator.instance.registerActive(_scannerController);
+
     _scanLineCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
@@ -34,7 +88,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
   @override
   void dispose() {
     _scanLineCtrl.dispose();
-    _scannerController.dispose();
+    BarcodeScannerSessionCoordinator.instance.disposeIfActive(_scannerController);
     super.dispose();
   }
 
@@ -43,6 +97,20 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
     final code = raw.trim();
     if (code.isEmpty) return;
 
+    if (widget.pickCodeOnly) {
+      setState(() => _busy = true);
+      try {
+        await _scannerController.stop();
+      } catch (e) {
+        if (_isBufferQueueIssue(e)) {
+          await _recoverFromBufferIssue();
+        }
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(<String, dynamic>{'barcode': code});
+      return;
+    }
+
     setState(() {
       _busy = true;
       _status = 'Fetching product…';
@@ -50,7 +118,17 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
 
     try {
       await _scannerController.stop();
-    } catch (_) {}
+    } catch (e) {
+      if (_isBufferQueueIssue(e)) {
+        await _recoverFromBufferIssue();
+      }
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _status = 'Camera error — try again.';
+      });
+      return;
+    }
 
     try {
       final data = await OpenFoodFactsService.fetchByBarcode(code);
@@ -62,7 +140,11 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
         });
         try {
           await _scannerController.start();
-        } catch (_) {}
+        } catch (e) {
+          if (_isBufferQueueIssue(e)) {
+            await _recoverFromBufferIssue();
+          }
+        }
         return;
       }
 
@@ -74,7 +156,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
         builder: (ctx) {
           const bg = Color(0xFF050510);
           const cyan = Color(0xFF00F3FF);
-          const gold = Color(0xFFCBAB67);
+          const gold = AppColors.cyberGold;
           return AlertDialog(
             backgroundColor: bg,
             shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
@@ -126,7 +208,11 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
         });
         try {
           await _scannerController.start();
-        } catch (_) {}
+        } catch (e) {
+          if (_isBufferQueueIssue(e)) {
+            await _recoverFromBufferIssue();
+          }
+        }
         return;
       }
 
@@ -136,6 +222,19 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
         ...data,
       });
     } catch (e) {
+      if (_isBufferQueueIssue(e)) {
+        debugPrint(
+          'DEBUG: [SCANNER] Attempting camera reset due to BufferQueue abandonment.',
+        );
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _status = null;
+          });
+        }
+        await _recoverFromBufferIssue();
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -143,7 +242,31 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
       });
       try {
         await _scannerController.start();
-      } catch (_) {}
+      } catch (e2) {
+        if (_isBufferQueueIssue(e2)) {
+          await _recoverFromBufferIssue();
+        }
+      }
+    }
+  }
+
+  Future<void> _onDetectSafe(BarcodeCapture capture) async {
+    if (_busy) return;
+    try {
+      final barcodes = capture.barcodes;
+      if (barcodes.isEmpty) return;
+      final raw = barcodes.first.rawValue ?? '';
+      await _handleCode(raw);
+    } catch (e, _) {
+      if (_isBufferQueueIssue(e)) {
+        await _recoverFromBufferIssue();
+      }
+    }
+  }
+
+  void _onDetectError(Object error, StackTrace stackTrace) {
+    if (_isBufferQueueIssue(error)) {
+      unawaited(_recoverFromBufferIssue());
     }
   }
 
@@ -151,15 +274,15 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
+    const gold = AppColors.cyberGold;
     const ruby = Color(0xFFE91E63);
 
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: const Text(
-          'SCAN BARCODE',
-          style: TextStyle(fontFamily: 'monospace', letterSpacing: 1.1),
+        title: Text(
+          widget.pickCodeOnly ? 'SCAN TO FILTER' : 'SCAN BARCODE',
+          style: const TextStyle(fontFamily: 'monospace', letterSpacing: 1.1),
         ),
         actions: [
           IconButton(
@@ -179,14 +302,10 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
       body: Stack(
         children: [
           MobileScanner(
+            key: ValueKey(_surfaceGeneration),
             controller: _scannerController,
-            onDetect: (capture) {
-              if (_busy) return;
-              final barcodes = capture.barcodes;
-              if (barcodes.isEmpty) return;
-              final raw = barcodes.first.rawValue ?? '';
-              _handleCode(raw);
-            },
+            onDetect: (capture) => unawaited(_onDetectSafe(capture)),
+            onDetectError: _onDetectError,
           ),
           // Frame + scanning line
           Center(
@@ -221,7 +340,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
                                 colors: [
                                   Color(0x0000F3FF),
                                   Color(0xFF00F3FF),
-                                  Color(0x00CBAB67),
+                                  Color(0x00FFD700),
                                 ],
                               ),
                               boxShadow: [
@@ -262,7 +381,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
                   Expanded(
                     child: Text(
                       _status ??
-                          'Point the camera at a barcode.\nWe will auto-fill macros per 100g.',
+                          (widget.pickCodeOnly
+                              ? 'Scan a barcode to filter your ingredients list.'
+                              : 'Point the camera at a barcode.\nWe will auto-fill macros per 100g.'),
                       style: TextStyle(
                         color: (_status?.contains('not found') ?? false)
                             ? ruby
@@ -293,4 +414,3 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen>
     );
   }
 }
-

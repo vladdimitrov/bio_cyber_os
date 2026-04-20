@@ -12,6 +12,7 @@ import '../../../core/widgets/library_search_sheet.dart';
 import '../../../core/widgets/reminder_section.dart';
 import '../../../core/settings/measurement_settings.dart';
 import '../../../core/settings/unit_options.dart';
+import '../../../core/theme/app_colors.dart';
 
 class SupplementsScreen extends StatefulWidget {
   final String? focusLogId;
@@ -42,18 +43,14 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
 
   /// Library items for the + picker.
   List<Map<String, dynamic>> librarySupplements = [];
+
   /// `daily_logs` rows with `supplement_id` set for the selected day.
   List<Map<String, dynamic>> dailyLogs = [];
 
   String? _highlightLogId;
   final Map<String, GlobalKey> _rowKeys = {};
 
-  static const _blocks = <String>[
-    'MORNING',
-    'AFTERNOON',
-    'EVENING',
-    'NIGHT',
-  ];
+  static const _blocks = <String>['MORNING', 'AFTERNOON', 'EVENING', 'NIGHT'];
 
   String _canonicalBlock(dynamic raw) {
     final s = (raw ?? '').toString().trim().toUpperCase();
@@ -103,14 +100,18 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
       selectedDate = DateTime(d.year, d.month, d.day);
       _fetchData().then((_) {
         if (!mounted) return;
-        WidgetsBinding.instance.addPostFrameCallback((_) => _ensureHighlightVisible());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _ensureHighlightVisible(),
+        );
       });
     }
     if (widget.focusLogId != null &&
         widget.focusLogId!.trim().isNotEmpty &&
         widget.focusLogId != oldWidget.focusLogId) {
       setState(() => _highlightLogId = widget.focusLogId);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _ensureHighlightVisible());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _ensureHighlightVisible(),
+      );
     }
   }
 
@@ -202,10 +203,12 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
             .order('scheduled_at', ascending: true);
 
         final raw = (logsData as List).cast<Map<String, dynamic>>();
-        nextLogs = raw.where((row) {
-          final sid = row['supplement_id'];
-          return sid != null && sid.toString().trim().isNotEmpty;
-        }).toList(growable: false);
+        nextLogs = raw
+            .where((row) {
+              final sid = row['supplement_id'];
+              return sid != null && sid.toString().trim().isNotEmpty;
+            })
+            .toList(growable: false);
       }
     } catch (e) {
       logsError = e;
@@ -350,6 +353,13 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
           .select('id')
           .timeout(const Duration(seconds: 8));
 
+      if (!mounted) return;
+      final l10n = context.l10n;
+      final reminderTitle = l10n.notificationReminderSuppIntake(
+        name.isEmpty ? l10n.defaultSupplementName : name,
+      );
+      final reminderBody = l10n.reminderBody;
+
       final insertedList = (inserted as List).cast<Map<String, dynamic>>();
       for (var i = 0; i < insertedList.length; i++) {
         final newId = (insertedList[i]['id'] ?? '').toString().trim();
@@ -358,10 +368,8 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
         if (rLocal != null && newId.isNotEmpty) {
           await NotificationService.scheduleByKey(
             key: 'daily_logs:$newId',
-            title: context.l10n.notificationReminderSuppIntake(
-              name.isEmpty ? context.l10n.defaultSupplementName : name,
-            ),
-            body: context.l10n.reminderBody,
+            title: reminderTitle,
+            body: reminderBody,
             whenLocal: rLocal,
             payload: {
               'item_type': 'supplement',
@@ -374,10 +382,10 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
       }
 
       if (picked.saveAsDefault == true) {
-        await _client.from('supplements').update({
-          'daily_dosage': picked.amount,
-          'unit_type': picked.unit,
-        }).eq('id', sid);
+        await _client
+            .from('supplements')
+            .update({'daily_dosage': picked.amount, 'unit_type': picked.unit})
+            .eq('id', sid);
       }
 
       if (!mounted) return;
@@ -424,7 +432,11 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
         );
         return;
       }
-      await _client.from(_dailyLogsTable).delete().eq('id', id).eq('user_id', uid);
+      await _client
+          .from(_dailyLogsTable)
+          .delete()
+          .eq('id', id)
+          .eq('user_id', uid);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -503,17 +515,17 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
     setState(() {
       _workingLogId = id;
       dailyLogs = dailyLogs
-          .map((e) => (e['id'] ?? '').toString() == id
-              ? {
-                  ...e,
-                  'is_taken': true,
-                  'taken_at': nowIsoLocal,
-                }
-              : e)
+          .map(
+            (e) => (e['id'] ?? '').toString() == id
+                ? {...e, 'is_taken': true, 'taken_at': nowIsoLocal}
+                : e,
+          )
           .toList(growable: false);
       _highlightLogId = id;
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureHighlightVisible());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _ensureHighlightVisible(),
+    );
 
     try {
       final uid = _client.auth.currentUser?.id;
@@ -528,10 +540,14 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
         await _fetchData();
         return;
       }
-      await _client.from(_dailyLogsTable).update({
-        'is_taken': true,
-        'taken_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', id).eq('user_id', uid);
+      await _client
+          .from(_dailyLogsTable)
+          .update({
+            'is_taken': true,
+            'taken_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', id)
+          .eq('user_id', uid);
 
       await NotificationService.cancelByKey('daily_logs:$id');
       await _fetchData();
@@ -558,8 +574,13 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
         ? (supplements['name'] ?? '').toString()
         : '';
     final existingAmount = _asDouble(log['amount_grams']);
-    final existingUnit =
-        _displayUnit((log['unit'] ?? (supplements is Map<String, dynamic> ? supplements['unit_type'] : '')).toString());
+    final existingUnit = _displayUnit(
+      (log['unit'] ??
+              (supplements is Map<String, dynamic>
+                  ? supplements['unit_type']
+                  : ''))
+          .toString(),
+    );
     final consumedAtLocal =
         _takenAtLocal(log) ?? _scheduledAtLocal(log) ?? DateTime.now();
     DateTime? reminderAtLocal;
@@ -595,7 +616,9 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
     );
   }
 
-  Future<void> _pickSupplementFromLibrary({required String scheduleBlock}) async {
+  Future<void> _pickSupplementFromLibrary({
+    required String scheduleBlock,
+  }) async {
     final loc = context.l10n;
     await LibrarySearchSheet.show(
       context,
@@ -621,10 +644,8 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
             : loc.libraryNoDefaultDose;
       },
       getIcon: (_) => Icons.medication_outlined,
-      onPick: (row) => _insertDailyLogForSupplement(
-        row,
-        scheduleBlock: scheduleBlock,
-      ),
+      onPick: (row) =>
+          _insertDailyLogForSupplement(row, scheduleBlock: scheduleBlock),
     );
   }
 
@@ -632,6 +653,7 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
+    const gold = AppColors.cyberGold;
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
@@ -639,7 +661,15 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
       appBar: widget.embedded
           ? null
           : AppBar(
-              title: Text(l10n.screenSupps),
+              title: Text(
+                l10n.screenSupps,
+                style: const TextStyle(
+                  color: AppColors.cyberGold,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              foregroundColor: gold,
               actions: [
                 IconButton(
                   tooltip: l10n.addSupplementToLibrary,
@@ -670,7 +700,7 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
             ),
             child: DefaultTextStyle(
               style: const TextStyle(
-                color: cyan,
+                color: AppColors.cyberGold,
                 fontFamily: 'monospace',
                 letterSpacing: 0.6,
                 fontSize: 13,
@@ -680,7 +710,7 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
                   IconButton(
                     onPressed: () => _shiftDay(-1),
                     icon: const Icon(Icons.chevron_left),
-                    color: cyan,
+                    color: gold,
                     tooltip: l10n.prevDay,
                   ),
                   Expanded(
@@ -688,7 +718,7 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
                       child: TextButton(
                         onPressed: _pickDate,
                         style: TextButton.styleFrom(
-                          foregroundColor: cyan,
+                          foregroundColor: gold,
                           shape: const RoundedRectangleBorder(
                             borderRadius: BorderRadius.zero,
                           ),
@@ -707,7 +737,7 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
                   IconButton(
                     onPressed: () => _shiftDay(1),
                     icon: const Icon(Icons.chevron_right),
-                    color: cyan,
+                    color: gold,
                     tooltip: 'Next day',
                   ),
                 ],
@@ -724,11 +754,11 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
                       if (dailyLogs.isEmpty)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(8, 4, 8, 14),
-                            child: Text(
+                          child: Text(
                             _emptyLogsMessage(l10n),
                             textAlign: TextAlign.left,
                             style: const TextStyle(
-                              color: Color(0x8800F3FF),
+                              color: AppColors.cyberGoldMuted,
                               fontFamily: 'monospace',
                               fontSize: 12,
                               height: 1.35,
@@ -742,194 +772,192 @@ class _SupplementsScreenState extends State<SupplementsScreen> {
                             localizedTimeBlock(l10n, block),
                           ),
                           entries: _groupedByBlock()[block]!,
-                          onAdd: () => _pickSupplementFromLibrary(
-                            scheduleBlock: block,
-                          ),
+                          onAdd: () =>
+                              _pickSupplementFromLibrary(scheduleBlock: block),
                           buildRow: (log) {
-                                final supplements = log['supplements'];
-                                final joinedName =
-                                    (supplements is Map<String, dynamic>)
-                                        ? (supplements['name'] ?? '').toString()
-                                        : '';
-                                final name =
-                                    joinedName.isNotEmpty ? joinedName : l10n.unknown;
-                                final amount = _asDouble(log['amount_grams']);
-                                final unit = _displayUnit(
-                                  (log['unit'] ??
-                                          (supplements is Map<String, dynamic>
-                                              ? supplements['unit_type']
-                                              : ''))
-                                      .toString(),
-                                );
-                                final isTaken = _isTaken(log);
-                                final time = _hhmmFromIso(
-                                  isTaken
-                                      ? (log['taken_at'] ?? log['consumed_at'])
-                                      : (log['scheduled_at'] ??
-                                          log['consumed_at']),
-                                );
-                                final isMissed = _isMissed(log);
-                                final line =
-                                    '$time — $name (${amount.toString()} $unit)'
-                                        .trim();
-                                final note =
-                                    (log['notes'] ?? '').toString().trim();
-                                final id = (log['id'] ?? '').toString();
-                                final rowKey =
-                                    _rowKeys.putIfAbsent(id, () => GlobalKey());
-                                final highlight = (_highlightLogId ?? '').trim() ==
-                                    id.trim();
+                            final supplements = log['supplements'];
+                            final joinedName =
+                                (supplements is Map<String, dynamic>)
+                                ? (supplements['name'] ?? '').toString()
+                                : '';
+                            final name = joinedName.isNotEmpty
+                                ? joinedName
+                                : l10n.unknown;
+                            final amount = _asDouble(log['amount_grams']);
+                            final unit = _displayUnit(
+                              (log['unit'] ??
+                                      (supplements is Map<String, dynamic>
+                                          ? supplements['unit_type']
+                                          : ''))
+                                  .toString(),
+                            );
+                            final isTaken = _isTaken(log);
+                            final time = _hhmmFromIso(
+                              isTaken
+                                  ? (log['taken_at'] ?? log['consumed_at'])
+                                  : (log['scheduled_at'] ?? log['consumed_at']),
+                            );
+                            final isMissed = _isMissed(log);
+                            final line =
+                                '$time — $name (${amount.toString()} $unit)'
+                                    .trim();
+                            final note = (log['notes'] ?? '').toString().trim();
+                            final id = (log['id'] ?? '').toString();
+                            final rowKey = _rowKeys.putIfAbsent(
+                              id,
+                              () => GlobalKey(),
+                            );
+                            final highlight =
+                                (_highlightLogId ?? '').trim() == id.trim();
 
-                                return Container(
-                                  key: rowKey,
-                                  margin: const EdgeInsets.only(bottom: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: highlight
-                                          ? const Color(0xFFFF3B30)
-                                          : (isTaken
-                                              ? const Color(0x2200F3FF)
-                                              : const Color(0x6600F3FF)),
-                                      width: highlight ? 2 : 1,
+                            return Container(
+                              key: rowKey,
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: highlight
+                                      ? const Color(0xFFFF3B30)
+                                      : (isTaken
+                                            ? const Color(0x2200F3FF)
+                                            : const Color(0x6600F3FF)),
+                                  width: highlight ? 2 : 1,
+                                ),
+                              ),
+                              child: Opacity(
+                                opacity: isTaken ? 1.0 : 0.72,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      isTaken
+                                          ? Icons.check_circle
+                                          : Icons.radio_button_unchecked,
+                                      color: isMissed ? Colors.red : gold,
+                                      size: 18,
                                     ),
-                                  ),
-                                  child: Opacity(
-                                    opacity: isTaken ? 1.0 : 0.72,
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          isTaken
-                                              ? Icons.check_circle
-                                              : Icons.radio_button_unchecked,
-                                          color: isMissed
-                                              ? Colors.red
-                                              : cyan,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
                                             children: [
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      line,
-                                                      style: const TextStyle(
-                                                        color: cyan,
-                                                        fontFamily: 'monospace',
-                                                        letterSpacing: 0.6,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 13,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  if (isMissed) ...[
-                                                    const SizedBox(width: 8),
-                                                    Text(
-                                                      l10n.missed,
-                                                      style: const TextStyle(
-                                                        color: Colors.red,
-                                                        fontFamily: 'monospace',
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                        letterSpacing: 0.8,
-                                                        fontSize: 11,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ],
-                                              ),
-                                              if (note.isNotEmpty) ...[
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  note,
+                                              Expanded(
+                                                child: Text(
+                                                  line,
                                                   style: const TextStyle(
-                                                    color: Colors.white70,
+                                                    color: AppColors.cyberGold,
                                                     fontFamily: 'monospace',
-                                                    fontSize: 12,
+                                                    letterSpacing: 0.6,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
                                                   ),
                                                 ),
-                                              ],
-                                              if (!isTaken) ...[
-                                                const SizedBox(height: 8),
-                                                OutlinedButton(
-                                                  onPressed: (_workingLogId ==
-                                                          id)
-                                                      ? null
-                                                      : () => _takePlanned(log),
-                                                  style:
-                                                      OutlinedButton.styleFrom(
-                                                    foregroundColor: cyan,
-                                                    side: const BorderSide(
-                                                        color: cyan, width: 1),
-                                                    shape:
-                                                        const RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.zero,
-                                                    ),
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 8),
-                                                    minimumSize: Size.zero,
-                                                    tapTargetSize:
-                                                        MaterialTapTargetSize
-                                                            .shrinkWrap,
-                                                  ),
-                                                  child: Text(
-                                                    l10n.take,
-                                                    style: const TextStyle(
-                                                      fontFamily: 'monospace',
-                                                      fontWeight:
-                                                          FontWeight.w900,
-                                                      letterSpacing: 1.0,
-                                                      fontSize: 12,
-                                                    ),
+                                              ),
+                                              if (isMissed) ...[
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  l10n.missed,
+                                                  style: const TextStyle(
+                                                    color: Colors.red,
+                                                    fontFamily: 'monospace',
+                                                    fontWeight: FontWeight.w900,
+                                                    letterSpacing: 0.8,
+                                                    fontSize: 11,
                                                   ),
                                                 ),
                                               ],
                                             ],
                                           ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        IconButton(
-                                          tooltip: l10n.editLog,
-                                          onPressed: (_workingLogId == id)
-                                              ? null
-                                              : () => _editLog(log),
-                                          icon: const Icon(Icons.edit,
-                                              color: cyan),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 36,
-                                            minHeight: 36,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                        ),
-                                        IconButton(
-                                          tooltip: l10n.deleteLog,
-                                          onPressed: (_workingLogId == id)
-                                              ? null
-                                              : () => _undoDelete(log),
-                                          icon: const Icon(Icons.delete,
-                                              color: Colors.red),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 36,
-                                            minHeight: 36,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                        ),
-                                      ],
+                                          if (note.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              note,
+                                              style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontFamily: 'monospace',
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                          if (!isTaken) ...[
+                                            const SizedBox(height: 8),
+                                            OutlinedButton(
+                                              onPressed: (_workingLogId == id)
+                                                  ? null
+                                                  : () => _takePlanned(log),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: gold,
+                                                side: const BorderSide(
+                                                  color: cyan,
+                                                  width: 1,
+                                                ),
+                                                shape:
+                                                    const RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.zero,
+                                                    ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 8,
+                                                    ),
+                                                minimumSize: Size.zero,
+                                                tapTargetSize:
+                                                    MaterialTapTargetSize
+                                                        .shrinkWrap,
+                                              ),
+                                              child: Text(
+                                                l10n.take,
+                                                style: const TextStyle(
+                                                  fontFamily: 'monospace',
+                                                  fontWeight: FontWeight.w900,
+                                                  letterSpacing: 1.0,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                );
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      tooltip: l10n.editLog,
+                                      onPressed: (_workingLogId == id)
+                                          ? null
+                                          : () => _editLog(log),
+                                      icon: Icon(Icons.edit, color: gold),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 36,
+                                        minHeight: 36,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    IconButton(
+                                      tooltip: l10n.deleteLog,
+                                      onPressed: (_workingLogId == id)
+                                          ? null
+                                          : () => _undoDelete(log),
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        color: Colors.red,
+                                      ),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 36,
+                                        minHeight: 36,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
                           },
                         ),
                     ],
@@ -967,13 +995,11 @@ class _BlockSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         border: Border.all(color: cyan, width: 1),
-        boxShadow: const [
-          BoxShadow(color: Color(0x2200F3FF), blurRadius: 8),
-        ],
+        boxShadow: const [BoxShadow(color: Color(0x2200F3FF), blurRadius: 8)],
       ),
       child: DefaultTextStyle(
         style: const TextStyle(
-          color: cyan,
+          color: AppColors.cyberGold,
           fontFamily: 'monospace',
           letterSpacing: 0.4,
         ),
@@ -994,7 +1020,8 @@ class _BlockSection extends StatelessWidget {
                 TextButton(
                   onPressed: onAdd,
                   style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF88CCFF),
+                    foregroundColor:
+                        AppColors.cyberGold.withValues(alpha: 0.88),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1004,10 +1031,7 @@ class _BlockSection extends StatelessWidget {
                     children: [
                       const Icon(Icons.add, size: 14),
                       const SizedBox(width: 2),
-                      Text(
-                        addLabel,
-                        style: const TextStyle(fontSize: 11),
-                      ),
+                      Text(addLabel, style: const TextStyle(fontSize: 11)),
                     ],
                   ),
                 ),
@@ -1015,7 +1039,7 @@ class _BlockSection extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             if (entries.isEmpty)
-              const Text('—', style: TextStyle(color: Color(0x8800F3FF)))
+              const Text('—', style: TextStyle(color: AppColors.cyberGoldMuted))
             else
               for (final e in entries) buildRow(e),
           ],
@@ -1079,7 +1103,11 @@ class _LogIntakeDialogState extends State<_LogIntakeDialog> {
     _units = UnitOptions.forContext(UnitContext.supplement, sys);
     final pre = widget.amountPrefill;
     _amountCtrl = TextEditingController(
-      text: pre != null && pre > 0 ? (pre == pre.roundToDouble() ? pre.toInt().toString() : pre.toString()) : '',
+      text: pre != null && pre > 0
+          ? (pre == pre.roundToDouble()
+                ? pre.toInt().toString()
+                : pre.toString())
+          : '',
     );
     final pref = widget.unitPrefill.trim();
     final def = UnitOptions.defaultUnit(UnitContext.supplement, sys);
@@ -1135,122 +1163,51 @@ class _LogIntakeDialogState extends State<_LogIntakeDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-            Text(
-              widget.itemName,
-              style: const TextStyle(
-                color: cyan,
-                fontFamily: 'monospace',
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: _pickIntakeTime,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: cyan,
-                side: const BorderSide(color: cyan, width: 1),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-              ),
-              icon: const Icon(Icons.schedule),
-              label: Text(
-                intakeLabel,
+              Text(
+                widget.itemName,
                 style: const TextStyle(
+                  color: cyan,
                   fontFamily: 'monospace',
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.8,
-                  fontSize: 11,
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _amountCtrl,
-              autofocus: widget.amountPrefill == null || widget.amountPrefill! <= 0,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                labelText: loc.amountTaken,
-                labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1.5),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: _unit,
-              dropdownColor: bg,
-              decoration: InputDecoration(
-                labelText: loc.unit,
-                labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1.5),
-                ),
-              ),
-              items: _units
-                  .map(
-                    (u) => DropdownMenuItem(
-                      value: u,
-                      child: Text(
-                        u,
-                        style: const TextStyle(
-                          color: cyan,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: (v) => setState(() => _unit = v ?? _unit),
-            ),
-            const SizedBox(height: 12),
-            ReminderSection(
-              state: _reminder,
-              onChanged: (s) => setState(() => _reminder = s),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    loc.fuelScheduleMultiDays,
-                    style: const TextStyle(
-                      color: Color(0x8800F3FF),
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      letterSpacing: 1.0,
-                      fontWeight: FontWeight.w800,
-                    ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: _pickIntakeTime,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: cyan,
+                  side: const BorderSide(color: cyan, width: 1),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
                   ),
                 ),
-                Switch(
-                  value: _repeatEnabled,
-                  activeThumbColor: cyan,
-                  onChanged: (v) => setState(() => _repeatEnabled = v),
+                icon: const Icon(Icons.schedule),
+                label: Text(
+                  intakeLabel,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    fontSize: 11,
+                  ),
                 ),
-              ],
-            ),
-            if (_repeatEnabled) ...[
-              const SizedBox(height: 8),
+              ),
+              const SizedBox(height: 12),
               TextField(
-                controller: _repeatCtrl,
-                keyboardType: TextInputType.number,
+                controller: _amountCtrl,
+                autofocus:
+                    widget.amountPrefill == null || widget.amountPrefill! <= 0,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 style: const TextStyle(color: cyan, fontFamily: 'monospace'),
                 decoration: InputDecoration(
-                  labelText: loc.numberOfConsecutiveDays,
-                  labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                  labelText: loc.amountTaken,
+                  labelStyle: const TextStyle(
+                    color: cyan,
+                    fontFamily: 'monospace',
+                  ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
                     borderSide: BorderSide(color: cyan, width: 1),
@@ -1261,25 +1218,110 @@ class _LogIntakeDialogState extends State<_LogIntakeDialog> {
                   ),
                 ),
               ),
-            ],
-            if (widget.showSaveAsDefault) ...[
               const SizedBox(height: 10),
-              CheckboxListTile(
-                value: _saveDefault,
-                onChanged: (v) => setState(() => _saveDefault = v == true),
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  loc.saveAsDefaultDoseLibrary,
-                  style: const TextStyle(
-                    color: Color(0xAA00F3FF),
+              DropdownButtonFormField<String>(
+                initialValue: _unit,
+                dropdownColor: bg,
+                decoration: InputDecoration(
+                  labelText: loc.unit,
+                  labelStyle: const TextStyle(
+                    color: cyan,
                     fontFamily: 'monospace',
-                    fontSize: 12,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: cyan, width: 1),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: cyan, width: 1.5),
                   ),
                 ),
+                items: _units
+                    .map(
+                      (u) => DropdownMenuItem(
+                        value: u,
+                        child: Text(
+                          u,
+                          style: const TextStyle(
+                            color: cyan,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (v) => setState(() => _unit = v ?? _unit),
               ),
-            ],
+              const SizedBox(height: 12),
+              ReminderSection(
+                state: _reminder,
+                onChanged: (s) => setState(() => _reminder = s),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      loc.fuelScheduleMultiDays,
+                      style: const TextStyle(
+                        color: Color(0x8800F3FF),
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        letterSpacing: 1.0,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Switch(
+                    value: _repeatEnabled,
+                    activeThumbColor: cyan,
+                    onChanged: (v) => setState(() => _repeatEnabled = v),
+                  ),
+                ],
+              ),
+              if (_repeatEnabled) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _repeatCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                  decoration: InputDecoration(
+                    labelText: loc.numberOfConsecutiveDays,
+                    labelStyle: const TextStyle(
+                      color: cyan,
+                      fontFamily: 'monospace',
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.zero,
+                      borderSide: BorderSide(color: cyan, width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.zero,
+                      borderSide: BorderSide(color: cyan, width: 1.5),
+                    ),
+                  ),
+                ),
+              ],
+              if (widget.showSaveAsDefault) ...[
+                const SizedBox(height: 10),
+                CheckboxListTile(
+                  value: _saveDefault,
+                  onChanged: (v) => setState(() => _saveDefault = v == true),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    loc.saveAsDefaultDoseLibrary,
+                    style: const TextStyle(
+                      color: Color(0xAA00F3FF),
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1293,9 +1335,9 @@ class _LogIntakeDialogState extends State<_LogIntakeDialog> {
           onPressed: () {
             final amt = _parseAmount();
             if (amt == null || amt <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(loc.msgValidAmount)),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(loc.msgValidAmount)));
               return;
             }
             var repeat = 1;
@@ -1382,7 +1424,9 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
       _minutesBeforeCtrl.text = existingOffset.toString();
     } else if (widget.existingReminderAtLocal != null) {
       _reminderMode = _ReminderMode.specific;
-      _specificReminder = TimeOfDay.fromDateTime(widget.existingReminderAtLocal!);
+      _specificReminder = TimeOfDay.fromDateTime(
+        widget.existingReminderAtLocal!,
+      );
     } else {
       _reminderMode = _ReminderMode.none;
       _minutesBefore = 30;
@@ -1453,6 +1497,12 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
         );
         return;
       }
+      final loc = context.l10n;
+      final reminderTitle = loc.notificationReminderSuppIntake(
+        widget.supplementName,
+      );
+      final reminderDefaultBody = loc.reminderBody;
+      final logUpdatedMsg = loc.msgLogUpdated;
       await _client
           .from('daily_logs')
           .update({
@@ -1465,7 +1515,8 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
             if (widget.isTaken)
               'taken_at': _consumedAtLocal.toUtc().toIso8601String(),
             'reminder_at': _computeReminderAtUtcIsoOrNull(),
-            'reminder_offset_minutes': _reminderMode == _ReminderMode.minutesBefore
+            'reminder_offset_minutes':
+                _reminderMode == _ReminderMode.minutesBefore
                 ? _minutesBefore
                 : (_reminderMode == _ReminderMode.none ? null : 0),
           })
@@ -1477,9 +1528,9 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
       if (reminderLocal != null) {
         await NotificationService.scheduleByKey(
           key: 'daily_logs:${widget.logId}',
-          title: context.l10n.notificationReminderSuppIntake(widget.supplementName),
+          title: reminderTitle,
           body: _noteController.text.trim().isEmpty
-              ? context.l10n.reminderBody
+              ? reminderDefaultBody
               : _noteController.text.trim(),
           whenLocal: reminderLocal,
           payload: {
@@ -1495,7 +1546,7 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
       Navigator.pop(context);
       widget.onRefresh().then((_) {
         messenger.showSnackBar(
-          SnackBar(content: Text(context.l10n.msgLogUpdated)),
+          SnackBar(content: Text(logUpdatedMsg)),
         );
       });
     } catch (e) {
@@ -1560,8 +1611,9 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: cyan,
                 side: const BorderSide(color: cyan, width: 1),
-                shape:
-                    const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
               ),
               icon: const Icon(Icons.schedule),
               label: Text(
@@ -1582,14 +1634,19 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
                 Expanded(
                   child: TextField(
                     controller: _amountController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    style:
-                        const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: const TextStyle(
+                      color: cyan,
+                      fontFamily: 'monospace',
+                    ),
                     decoration: InputDecoration(
                       labelText: loc.amountLabelShort,
-                      labelStyle:
-                          const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      labelStyle: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: cyan, width: 1),
@@ -1609,8 +1666,10 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
                     dropdownColor: bg,
                     decoration: InputDecoration(
                       labelText: loc.unit,
-                      labelStyle:
-                          const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      labelStyle: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: cyan, width: 1),
@@ -1664,7 +1723,10 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
               style: const TextStyle(color: cyan, fontFamily: 'monospace'),
               decoration: InputDecoration(
                 labelText: loc.notes,
-                labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                labelStyle: const TextStyle(
+                  color: cyan,
+                  fontFamily: 'monospace',
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
                   borderSide: BorderSide(color: cyan, width: 1),
@@ -1735,7 +1797,10 @@ class _ReminderSection extends StatelessWidget {
         SegmentedButton<_ReminderMode>(
           segments: [
             ButtonSegment(value: _ReminderMode.none, label: Text(loc.none)),
-            ButtonSegment(value: _ReminderMode.specific, label: Text(loc.specific)),
+            ButtonSegment(
+              value: _ReminderMode.specific,
+              label: Text(loc.specific),
+            ),
             ButtonSegment(
               value: _ReminderMode.minutesBefore,
               label: Text(loc.minutesBefore),
@@ -1862,17 +1927,14 @@ class _NewSupplementDialogState extends State<_NewSupplementDialog> {
     setState(() => _saving = true);
     try {
       final uid = _client.auth.currentUser?.id;
-      await _client.from('supplements').insert({
-        'name': name,
-        'user_id': uid,
-      });
+      await _client.from('supplements').insert({'name': name, 'user_id': uid});
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1922,4 +1984,3 @@ class _NewSupplementDialogState extends State<_NewSupplementDialog> {
     );
   }
 }
-

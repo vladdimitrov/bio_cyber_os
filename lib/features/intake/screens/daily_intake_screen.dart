@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 import 'package:bio_cyber_os/l10n/context_l10n.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/services/open_food_facts_service.dart';
 import '../../../core/supabase_error_message.dart';
@@ -49,8 +50,13 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedDay = widget.focusSuppDate ?? widget.focusMedDate ?? DateTime.now();
-    _selectedDay = DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day);
+    _selectedDay =
+        widget.focusSuppDate ?? widget.focusMedDate ?? DateTime.now();
+    _selectedDay = DateTime(
+      _selectedDay.year,
+      _selectedDay.month,
+      _selectedDay.day,
+    );
     _fetch();
 
     // Best-effort: refresh on auth/session changes (e.g., after quick add).
@@ -74,7 +80,9 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
       lastDate: DateTime(2030),
     );
     if (picked == null) return;
-    setState(() => _selectedDay = DateTime(picked.year, picked.month, picked.day));
+    setState(
+      () => _selectedDay = DateTime(picked.year, picked.month, picked.day),
+    );
     await _fetch();
   }
 
@@ -125,7 +133,9 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
     final dayStr = supabaseDateOnly(_selectedDay);
     final data = await _client
         .from('daily_logs')
-        .select('id,created_at,scheduled_at,taken_at,is_taken,amount_grams,unit,schedule_block,notes,supplement_id,supplements(name)')
+        .select(
+          'id,created_at,scheduled_at,taken_at,is_taken,amount_grams,unit,schedule_block,notes,supplement_id,supplements(name)',
+        )
         .eq('user_id', uid)
         .gte('created_at', supabaseCreatedAtDayGte(dayStr))
         .lte('created_at', supabaseCreatedAtDayLte(dayStr))
@@ -146,9 +156,12 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
           name: name.isNotEmpty ? name : 'Supplement',
           scheduleBlock: (r['schedule_block'] ?? 'MORNING').toString(),
           unit: (r['unit'] ?? '').toString(),
-          amount: (r['amount_grams'] is num) ? (r['amount_grams'] as num).toDouble() : 0.0,
+          amount: (r['amount_grams'] is num)
+              ? (r['amount_grams'] as num).toDouble()
+              : 0.0,
           notes: (r['notes'] ?? '').toString(),
-          scheduledIsoUtc: (r['scheduled_at'] ?? r['created_at'] ?? '').toString(),
+          scheduledIsoUtc: (r['scheduled_at'] ?? r['created_at'] ?? '')
+              .toString(),
           takenIsoUtc: (r['taken_at'] ?? '').toString(),
           isTaken: _asBool(r['is_taken']),
           sortIsoUtc: (r['scheduled_at'] ?? r['created_at'] ?? '').toString(),
@@ -160,7 +173,8 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
 
   Future<List<_IntakeEntry>> _fetchMedicationLogs(String uid) async {
     final bounds = supabaseLocalDayUtcBounds(_selectedDay);
-    const sel = 'id,created_at,scheduled_at,taken_at,is_taken,dose_amount,unit_type,schedule_block,notes,medication_id,medications(name)';
+    const sel =
+        'id,created_at,scheduled_at,taken_at,is_taken,dose_amount,unit_type,schedule_block,notes,medication_id,medications(name)';
     final byId = <String, Map<String, dynamic>>{};
 
     Future<void> mergeFrom(String column) async {
@@ -199,9 +213,12 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
           name: name.isNotEmpty ? name : 'Medication',
           scheduleBlock: (r['schedule_block'] ?? 'MORNING').toString(),
           unit: (r['unit_type'] ?? '').toString(),
-          amount: (r['dose_amount'] is num) ? (r['dose_amount'] as num).toDouble() : 0.0,
+          amount: (r['dose_amount'] is num)
+              ? (r['dose_amount'] as num).toDouble()
+              : 0.0,
           notes: (r['notes'] ?? '').toString(),
-          scheduledIsoUtc: (r['scheduled_at'] ?? r['created_at'] ?? '').toString(),
+          scheduledIsoUtc: (r['scheduled_at'] ?? r['created_at'] ?? '')
+              .toString(),
           takenIsoUtc: (r['taken_at'] ?? '').toString(),
           isTaken: _asBool(r['is_taken']),
           sortIsoUtc: (r['scheduled_at'] ?? r['created_at'] ?? '').toString(),
@@ -215,17 +232,14 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
     final uid = _client.auth.currentUser?.id;
     if (uid == null) return;
 
-    final markIsoUtc = next
-        ? DateTime.now().toUtc().toIso8601String()
-        : '';
+    final markIsoUtc = next ? DateTime.now().toUtc().toIso8601String() : '';
     setState(() {
       _entries = _entries
-          .map((x) => x.id == e.id
-              ? x.copyWith(
-                  isTaken: next,
-                  takenIsoUtc: markIsoUtc,
-                )
-              : x)
+          .map(
+            (x) => x.id == e.id
+                ? x.copyWith(isTaken: next, takenIsoUtc: markIsoUtc)
+                : x,
+          )
           .toList(growable: false);
     });
 
@@ -238,15 +252,17 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
 
     try {
       if (e.type == _IntakeType.supplement) {
-        await _client.from('daily_logs').update({
-          'is_taken': next,
-          'taken_at': next ? markIsoUtc : null,
-        }).eq('id', e.id).eq('user_id', uid);
+        await _client
+            .from('daily_logs')
+            .update({'is_taken': next, 'taken_at': next ? markIsoUtc : null})
+            .eq('id', e.id)
+            .eq('user_id', uid);
       } else {
-        await _client.from('medication_logs').update({
-          'is_taken': next,
-          'taken_at': next ? markIsoUtc : null,
-        }).eq('id', e.id).eq('user_id', uid);
+        await _client
+            .from('medication_logs')
+            .update({'is_taken': next, 'taken_at': next ? markIsoUtc : null})
+            .eq('id', e.id)
+            .eq('user_id', uid);
       }
     } catch (_) {
       // revert with best-effort reload
@@ -401,9 +417,9 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Updated entry.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Updated entry.')));
       await _fetch();
     } catch (err) {
       if (!mounted) return;
@@ -487,194 +503,192 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SelectableText(
-                      _error.toString(),
-                      style: const TextStyle(color: cyan),
+            ? Padding(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(
+                  _error.toString(),
+                  style: const TextStyle(color: cyan),
+                ),
+              )
+            : Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
                     ),
-                  )
-                : Column(
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(color: cyan, width: 2),
-                          ),
-                        ),
-                        child: DefaultTextStyle(
-                          style: const TextStyle(
-                            color: cyan,
-                            fontFamily: 'monospace',
-                            letterSpacing: 0.6,
-                            fontSize: 13,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: cyan, width: 2)),
+                    ),
+                    child: DefaultTextStyle(
+                      style: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                        letterSpacing: 0.6,
+                        fontSize: 13,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Row(
-                                children: [
-                                  IconButton(
-                                    onPressed: () => _shiftDay(-1),
-                                    icon: const Icon(Icons.chevron_left),
-                                    color: cyan,
-                                    tooltip: l10n.prevDay,
-                                  ),
-                                  Expanded(
-                                    child: Center(
-                                      child: TextButton(
-                                        onPressed: _pickDate,
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: cyan,
-                                          shape: const RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.zero,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          _dayLabel(_selectedDay),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 1.2,
-                                            fontFamily: 'monospace',
-                                          ),
-                                        ),
+                              IconButton(
+                                onPressed: () => _shiftDay(-1),
+                                icon: const Icon(Icons.chevron_left),
+                                color: cyan,
+                                tooltip: l10n.prevDay,
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: TextButton(
+                                    onPressed: _pickDate,
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: cyan,
+                                      shape: const RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.zero,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      _dayLabel(_selectedDay),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1.2,
+                                        fontFamily: 'monospace',
                                       ),
                                     ),
                                   ),
-                                  IconButton(
-                                    onPressed: () => _shiftDay(1),
-                                    icon: const Icon(Icons.chevron_right),
-                                    color: cyan,
-                                    tooltip: l10n.nextDay,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'INTAKE ADHERENCE',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.0,
-                                  color: cyan.withValues(alpha: 0.9),
                                 ),
                               ),
-                              const SizedBox(height: 10),
-                              _IntakeDualMacroBar(
-                                label: 'ALL',
-                                consumed: all.taken.toDouble(),
-                                prognostic: all.total.toDouble(),
-                                target: (all.total > 0 ? all.total : 1).toDouble(),
-                                unit: '',
-                                decimals: 0,
-                              ),
-                              const SizedBox(height: 8),
-                              _IntakeDualMacroBar(
-                                label: 'SUPP',
-                                consumed: sup.taken.toDouble(),
-                                prognostic: sup.total.toDouble(),
-                                target: (sup.total > 0 ? sup.total : 1).toDouble(),
-                                unit: '',
-                                decimals: 0,
-                              ),
-                              const SizedBox(height: 8),
-                              _IntakeDualMacroBar(
-                                label: 'MED',
-                                consumed: med.taken.toDouble(),
-                                prognostic: med.total.toDouble(),
-                                target: (med.total > 0 ? med.total : 1).toDouble(),
-                                unit: '',
-                                decimals: 0,
-                              ),
-                              const SizedBox(height: 8),
-                              _IntakeDualMacroBar(
-                                label: 'OPEN',
-                                consumed: 0,
-                                prognostic: _entries
-                                    .where((e) => !e.isTaken)
-                                    .length
-                                    .toDouble(),
-                                target: (all.total > 0 ? all.total : 1).toDouble(),
-                                unit: '',
-                                decimals: 0,
+                              IconButton(
+                                onPressed: () => _shiftDay(1),
+                                icon: const Icon(Icons.chevron_right),
+                                color: cyan,
+                                tooltip: l10n.nextDay,
                               ),
                             ],
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'INTAKE ADHERENCE',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.0,
+                              color: cyan.withValues(alpha: 0.9),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _IntakeDualMacroBar(
+                            label: 'ALL',
+                            consumed: all.taken.toDouble(),
+                            prognostic: all.total.toDouble(),
+                            target: (all.total > 0 ? all.total : 1).toDouble(),
+                            unit: '',
+                            decimals: 0,
+                          ),
+                          const SizedBox(height: 8),
+                          _IntakeDualMacroBar(
+                            label: 'SUPP',
+                            consumed: sup.taken.toDouble(),
+                            prognostic: sup.total.toDouble(),
+                            target: (sup.total > 0 ? sup.total : 1).toDouble(),
+                            unit: '',
+                            decimals: 0,
+                          ),
+                          const SizedBox(height: 8),
+                          _IntakeDualMacroBar(
+                            label: 'MED',
+                            consumed: med.taken.toDouble(),
+                            prognostic: med.total.toDouble(),
+                            target: (med.total > 0 ? med.total : 1).toDouble(),
+                            unit: '',
+                            decimals: 0,
+                          ),
+                          const SizedBox(height: 8),
+                          _IntakeDualMacroBar(
+                            label: 'OPEN',
+                            consumed: 0,
+                            prognostic: _entries
+                                .where((e) => !e.isTaken)
+                                .length
+                                .toDouble(),
+                            target: (all.total > 0 ? all.total : 1).toDouble(),
+                            unit: '',
+                            decimals: 0,
+                          ),
+                        ],
                       ),
-                      Expanded(
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-                          children: [
-                            if (_entries.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: Text(
-                                  'No intake entries for ${_dayLabel(_selectedDay)}.',
-                                  style: const TextStyle(
-                                    color: Color(0x8800F3FF),
-                                    fontFamily: 'monospace',
-                                    fontSize: 11,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ),
-                            for (final slot in const [
-                              'MORNING',
-                              'AFTERNOON',
-                              'EVENING',
-                              'NIGHT',
-                              'OTHER',
-                            ])
-                              _IntakeSlotSection(
-                                title: slot,
-                                entries: grouped[slot] ?? const [],
-                                onPlanSlot: _openAddFlow,
-                                buildRow: (ctx, entry, detailed) {
-                                  return _IntakeItemRow(
-                                    entry: entry,
-                                    showDetails: detailed,
-                                    onToggleTaken: (v) => _toggleTaken(entry, v),
-                                    onTake: () => _toggleTaken(entry, true),
-                                    onEdit: () => _editEntry(entry),
-                                    onDelete: () => _deleteWithUndo(entry),
-                                  );
-                                },
-                              ),
-                            const SizedBox(height: 8),
-                            OutlinedButton(
-                              onPressed: _openAddFlow,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: cyan,
-                                side: const BorderSide(color: cyan, width: 1),
-                                shape: const RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.zero,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                  horizontal: 8,
-                                ),
-                              ),
-                              child: const Text(
-                                'ADD ENTRY',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.0,
-                                ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                      children: [
+                        if (_entries.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              'No intake entries for ${_dayLabel(_selectedDay)}.',
+                              style: const TextStyle(
+                                color: Color(0x8800F3FF),
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                                height: 1.35,
                               ),
                             ),
-                          ],
+                          ),
+                        for (final slot in const [
+                          'MORNING',
+                          'AFTERNOON',
+                          'EVENING',
+                          'NIGHT',
+                          'OTHER',
+                        ])
+                          _IntakeSlotSection(
+                            title: slot,
+                            entries: grouped[slot] ?? const [],
+                            onPlanSlot: _openAddFlow,
+                            buildRow: (ctx, entry, detailed) {
+                              return _IntakeItemRow(
+                                entry: entry,
+                                showDetails: detailed,
+                                onToggleTaken: (v) => _toggleTaken(entry, v),
+                                onTake: () => _toggleTaken(entry, true),
+                                onEdit: () => _editEntry(entry),
+                                onDelete: () => _deleteWithUndo(entry),
+                              );
+                            },
+                          ),
+                        const SizedBox(height: 8),
+                        OutlinedButton(
+                          onPressed: _openAddFlow,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: cyan,
+                            side: const BorderSide(color: cyan, width: 1),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.zero,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                              horizontal: 8,
+                            ),
+                          ),
+                          child: const Text(
+                            'ADD ENTRY',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                ],
+              ),
       ),
     );
   }
@@ -733,11 +747,8 @@ class _IntakeEntry {
   }
 }
 
-typedef _IntakeRowBuilder = Widget Function(
-  BuildContext context,
-  _IntakeEntry entry,
-  bool showDetails,
-);
+typedef _IntakeRowBuilder =
+    Widget Function(BuildContext context, _IntakeEntry entry, bool showDetails);
 
 class _IntakeNotchedFramePainter extends CustomPainter {
   final Color color;
@@ -760,10 +771,14 @@ class _IntakeNotchedFramePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final r = Rect.fromLTWH(0, 0, size.width, size.height);
-    final leftNotch =
-        (notchCenterX - notchWidth / 2).clamp(6.0, size.width - 6.0);
-    final rightNotch =
-        (notchCenterX + notchWidth / 2).clamp(6.0, size.width - 6.0);
+    final leftNotch = (notchCenterX - notchWidth / 2).clamp(
+      6.0,
+      size.width - 6.0,
+    );
+    final rightNotch = (notchCenterX + notchWidth / 2).clamp(
+      6.0,
+      size.width - 6.0,
+    );
 
     canvas.drawLine(const Offset(0, 0), Offset(leftNotch, 0), p);
     canvas.drawLine(Offset(rightNotch, 0), Offset(size.width, 0), p);
@@ -869,7 +884,7 @@ class _IntakeUnifiedMacroBarPainter extends CustomPainter {
 
     canvas.drawRect(
       Rect.fromLTWH(w - 2, 0, 2, h),
-      Paint()..color = const Color(0xFFFFC107),
+      Paint()..color = AppColors.cyberGold,
     );
   }
 
@@ -911,7 +926,6 @@ class _IntakeDualMacroBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const amber = Color(0xFFFFC107);
     final t = target > 0 ? target : 1.0;
     final u = unit.isEmpty ? '' : unit;
     final plannedPending = math.max(0.0, prognostic - consumed);
@@ -944,7 +958,7 @@ class _IntakeDualMacroBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: amber,
+                    color: AppColors.cyberGold,
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.bold,
                     fontSize: 11,
@@ -1055,20 +1069,26 @@ class _IntakeSlotSectionState extends State<_IntakeSlotSection> {
                               IconButton(
                                 onPressed: () =>
                                     setState(() => _detailed = !_detailed),
-                                padding: const EdgeInsets.all(8),
-                                iconSize: 28,
-                                constraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(52, 52),
+                                  padding: const EdgeInsets.all(13),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.padded,
                                 ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 52,
+                                  minHeight: 52,
+                                ),
+                                iconSize: 26,
                                 icon: Icon(
                                   _detailed
                                       ? Icons.visibility_off
                                       : Icons.visibility,
-                                  size: 28,
+                                  size: 26,
                                   color: _detailed
-                                      ? const Color(0xFF00F3FF)
-                                      : const Color(0xFF88CCFF),
+                                      ? AppColors.cyberGold
+                                          .withValues(alpha: 0.75)
+                                      : AppColors.cyberGold,
                                 ),
                                 tooltip: _detailed
                                     ? 'Hide details'
@@ -1125,7 +1145,8 @@ class _IntakeSlotSectionState extends State<_IntakeSlotSection> {
                               const SizedBox(height: 6),
                               for (final e in planned)
                                 widget.buildRow(context, e, _detailed),
-                              if (consumed.isNotEmpty) const SizedBox(height: 8),
+                              if (consumed.isNotEmpty)
+                                const SizedBox(height: 8),
                             ],
                             if (consumed.isNotEmpty) ...[
                               Text(
@@ -1182,7 +1203,7 @@ class _IntakeItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
+    const gold = AppColors.cyberGold;
     const ruby = Color(0xFFE91E63);
     final loc = context.l10n;
 
@@ -1258,10 +1279,7 @@ class _IntakeItemRow extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 4,
                     children: [
-                      _TagChip(
-                        label: isMed ? 'MED' : 'SUPP',
-                        color: accent,
-                      ),
+                      _TagChip(label: isMed ? 'MED' : 'SUPP', color: accent),
                       _TagChip(
                         label: entry.scheduleBlock.toUpperCase(),
                         color: const Color(0x8800F3FF),
@@ -1289,8 +1307,10 @@ class _IntakeItemRow extends StatelessWidget {
                 foregroundColor: const Color(0xFF00F3FF),
                 elevation: 0,
                 side: const BorderSide(color: Color(0xFF00F3FF), width: 1),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 minimumSize: const Size(64, 40),
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.zero,
@@ -1394,13 +1414,20 @@ class _EditPickDialogState extends State<_EditPickDialog> {
     super.initState();
     final e = widget.entry;
     _amountCtrl = TextEditingController(
-      text: e.amount <= 0 ? '' : (e.amount == e.amount.roundToDouble() ? e.amount.toInt().toString() : e.amount.toString()),
+      text: e.amount <= 0
+          ? ''
+          : (e.amount == e.amount.roundToDouble()
+                ? e.amount.toInt().toString()
+                : e.amount.toString()),
     );
     _notesCtrl = TextEditingController(text: e.notes);
-    final dt = DateTime.tryParse(e.scheduledIsoUtc)?.toLocal() ?? DateTime.now();
+    final dt =
+        DateTime.tryParse(e.scheduledIsoUtc)?.toLocal() ?? DateTime.now();
     _time = TimeOfDay.fromDateTime(dt);
     _unit = e.unit.trim().isEmpty ? 'pcs' : e.unit.trim();
-    _block = e.scheduleBlock.trim().isEmpty ? 'MORNING' : e.scheduleBlock.trim().toUpperCase();
+    _block = e.scheduleBlock.trim().isEmpty
+        ? 'MORNING'
+        : e.scheduleBlock.trim().toUpperCase();
     if (!_blocks.contains(_block)) _block = 'MORNING';
   }
 
@@ -1417,7 +1444,7 @@ class _EditPickDialogState extends State<_EditPickDialog> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
+    const gold = AppColors.cyberGold;
     final isMed = widget.entry.type == _IntakeType.medication;
     final accent = isMed ? gold : cyan;
     final units = isMed ? _medUnits : _suppUnits;
@@ -1480,7 +1507,10 @@ class _EditPickDialogState extends State<_EditPickDialog> {
                     onChanged: (v) => setState(() => _block = v ?? _block),
                     decoration: InputDecoration(
                       labelText: 'Block',
-                      labelStyle: TextStyle(color: accent, fontFamily: 'monospace'),
+                      labelStyle: TextStyle(
+                        color: accent,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: accent, width: 1),
@@ -1500,11 +1530,19 @@ class _EditPickDialogState extends State<_EditPickDialog> {
                 Expanded(
                   child: TextField(
                     controller: _amountCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: const TextStyle(
+                      color: cyan,
+                      fontFamily: 'monospace',
+                    ),
                     decoration: InputDecoration(
                       labelText: 'Amount',
-                      labelStyle: TextStyle(color: accent, fontFamily: 'monospace'),
+                      labelStyle: TextStyle(
+                        color: accent,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: accent, width: 1),
@@ -1526,7 +1564,10 @@ class _EditPickDialogState extends State<_EditPickDialog> {
                     onChanged: (v) => setState(() => _unit = v ?? _unit),
                     decoration: InputDecoration(
                       labelText: 'Unit',
-                      labelStyle: TextStyle(color: accent, fontFamily: 'monospace'),
+                      labelStyle: TextStyle(
+                        color: accent,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: accent, width: 1),
@@ -1570,9 +1611,9 @@ class _EditPickDialogState extends State<_EditPickDialog> {
           onPressed: () {
             final amt = _d(_amountCtrl.text);
             if (amt <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(loc.msgValidAmount)),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(loc.msgValidAmount)));
               return;
             }
             Navigator.of(context).pop(
@@ -1602,9 +1643,7 @@ class _TagChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        border: Border.all(color: color, width: 1),
-      ),
+      decoration: BoxDecoration(border: Border.all(color: color, width: 1)),
       child: Text(
         label,
         style: TextStyle(
@@ -1762,36 +1801,40 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
         final payload = <String, dynamic>{
           'name': name,
           'user_id': uid,
-          if ((_pendingBarcode ?? '').trim().isNotEmpty) 'barcode': _pendingBarcode,
+          if ((_pendingBarcode ?? '').trim().isNotEmpty)
+            'barcode': _pendingBarcode,
         };
         await _client.from('supplements').insert(payload);
       } else {
         final payload = <String, dynamic>{
           'name': name,
           'user_id': uid,
-          if ((_pendingBarcode ?? '').trim().isNotEmpty) 'barcode': _pendingBarcode,
+          if ((_pendingBarcode ?? '').trim().isNotEmpty)
+            'barcode': _pendingBarcode,
         };
         await _client.from('medications').insert(payload);
       }
       if (!mounted) return;
       _pendingBarcode = null;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added "$name" to ${type == _IntakeType.supplement ? 'Supplements' : 'Meds'}')),
+        SnackBar(
+          content: Text(
+            'Added "$name" to ${type == _IntakeType.supplement ? 'Supplements' : 'Meds'}',
+          ),
+        ),
       );
       await _loadAll();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
   Future<void> _scanBarcode() async {
     if (_barcodeBusy) return;
-    final res = await Navigator.of(context).push<Map<String, dynamic>?>(
-      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-    );
+    final res = await BarcodeScannerScreen.pushForResult(context);
     if (res == null || !mounted) return;
     final code = (res['barcode'] ?? '').toString().trim();
     if (code.isEmpty) return;
@@ -1854,7 +1897,11 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
           _applyFilter(name);
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Found "$name". Add it to your library to learn this barcode.')),
+            SnackBar(
+              content: Text(
+                'Found "$name". Add it to your library to learn this barcode.',
+              ),
+            ),
           );
           return;
         }
@@ -1876,11 +1923,17 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
     final picked = await showDialog<_LogPick?>(
       context: context,
       builder: (_) => _LogPickDialog(
-        title: item.type == _IntakeType.supplement ? 'Log supplement' : 'Log med',
+        title: item.type == _IntakeType.supplement
+            ? 'Log supplement'
+            : 'Log med',
         name: item.name,
         type: item.type,
-        amountPrefill: item.type == _IntakeType.supplement ? item.defaultDose : null,
-        unitPrefill: item.type == _IntakeType.supplement ? item.defaultUnit : null,
+        amountPrefill: item.type == _IntakeType.supplement
+            ? item.defaultDose
+            : null,
+        unitPrefill: item.type == _IntakeType.supplement
+            ? item.defaultUnit
+            : null,
         day: widget.selectedDay,
       ),
     );
@@ -1898,8 +1951,9 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
     );
     final scheduledIsoUtc = scheduledLocal.toUtc().toIso8601String();
     final takenNow = !picked.planOnly;
-    final takenAtIso =
-        takenNow ? scheduledLocal.toUtc().toIso8601String() : null;
+    final takenAtIso = takenNow
+        ? scheduledLocal.toUtc().toIso8601String()
+        : null;
 
     DateTime? reminderLocal;
     int? reminderOffsetMinutes;
@@ -2023,10 +2077,11 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
+    const gold = AppColors.cyberGold;
 
     final hasResults = _results.isNotEmpty;
-    final showQuickAdd = !hasResults && _q.trim().isNotEmpty && !_loading && _error == null;
+    final showQuickAdd =
+        !hasResults && _q.trim().isNotEmpty && !_loading && _error == null;
 
     return Scaffold(
       backgroundColor: bg,
@@ -2036,158 +2091,174 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
           children: [
             Column(
               children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: cyan, width: 2)),
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close),
-                  color: cyan,
-                  tooltip: 'Close',
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    onChanged: _applyFilter,
-                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                    decoration: InputDecoration(
-                      hintText: 'Search supplements + meds...',
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF757575),
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                      ),
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'Scan barcode',
-                            onPressed: _scanBarcode,
-                            icon: const Icon(Icons.qr_code_scanner),
-                            color: gold,
-                          ),
-                          if (_q.trim().isNotEmpty)
-                            IconButton(
-                              tooltip: 'Clear',
-                              onPressed: () {
-                                _controller.clear();
-                                _applyFilter('');
-                              },
-                              icon: const Icon(Icons.clear),
-                              color: cyan,
-                            ),
-                        ],
-                      ),
-                      enabledBorder: const OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: cyan, width: 1),
-                      ),
-                      focusedBorder: const OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: cyan, width: 1.5),
-                      ),
-                    ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: cyan, width: 2)),
                   ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close),
+                        color: cyan,
+                        tooltip: 'Close',
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          onChanged: _applyFilter,
+                          style: const TextStyle(
+                            color: cyan,
+                            fontFamily: 'monospace',
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Search supplements + meds...',
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF757575),
+                              fontFamily: 'monospace',
+                              fontSize: 13,
+                            ),
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Scan barcode',
+                                  onPressed: _scanBarcode,
+                                  icon: const Icon(Icons.qr_code_scanner),
+                                  color: gold,
+                                ),
+                                if (_q.trim().isNotEmpty)
+                                  IconButton(
+                                    tooltip: 'Clear',
+                                    onPressed: () {
+                                      _controller.clear();
+                                      _applyFilter('');
+                                    },
+                                    icon: const Icon(Icons.clear),
+                                    color: cyan,
+                                  ),
+                              ],
+                            ),
+                            enabledBorder: const OutlineInputBorder(
+                              borderRadius: BorderRadius.zero,
+                              borderSide: BorderSide(color: cyan, width: 1),
+                            ),
+                            focusedBorder: const OutlineInputBorder(
+                              borderRadius: BorderRadius.zero,
+                              borderSide: BorderSide(color: cyan, width: 1.5),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _error != null
+                      ? Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: SelectableText(
+                            _error.toString(),
+                            style: const TextStyle(color: cyan),
+                          ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.all(12),
+                          children: [
+                            if (showQuickAdd) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: const Color(0x3300F3FF),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    const Text(
+                                      'Not found?',
+                                      style: TextStyle(
+                                        color: cyan,
+                                        fontFamily: 'monospace',
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _quickAdd(_IntakeType.supplement),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: cyan,
+                                        shape: const RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.zero,
+                                        ),
+                                        side: const BorderSide(color: cyan),
+                                      ),
+                                      icon: const Icon(Icons.eco_outlined),
+                                      label: Text('Add "$_q" to Supplements'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _quickAdd(_IntakeType.medication),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: gold,
+                                        shape: const RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.zero,
+                                        ),
+                                        side: const BorderSide(color: gold),
+                                      ),
+                                      icon: const Icon(
+                                        Icons.medication_liquid_outlined,
+                                      ),
+                                      label: Text('Add "$_q" to Meds'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                            ],
+                            for (final item in _results)
+                              ListTile(
+                                onTap: () => _logFromLibrary(item),
+                                leading: Icon(
+                                  item.type == _IntakeType.medication
+                                      ? Icons.medication_liquid_outlined
+                                      : Icons.eco_outlined,
+                                  color: item.type == _IntakeType.medication
+                                      ? gold
+                                      : cyan,
+                                ),
+                                title: Text(
+                                  item.name,
+                                  style: const TextStyle(
+                                    color: cyan,
+                                    fontFamily: 'monospace',
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                trailing: _TagChip(
+                                  label: item.type == _IntakeType.medication
+                                      ? 'MED'
+                                      : 'SUPP',
+                                  color: item.type == _IntakeType.medication
+                                      ? gold
+                                      : cyan,
+                                ),
+                              ),
+                          ],
+                        ),
                 ),
               ],
             ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                    ? Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: SelectableText(
-                          _error.toString(),
-                          style: const TextStyle(color: cyan),
-                        ),
-                      )
-                    : ListView(
-                        padding: const EdgeInsets.all(12),
-                        children: [
-                          if (showQuickAdd) ...[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: const Color(0x3300F3FF)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  const Text(
-                                    'Not found?',
-                                    style: TextStyle(
-                                      color: cyan,
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  OutlinedButton.icon(
-                                    onPressed: () => _quickAdd(_IntakeType.supplement),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: cyan,
-                                      shape: const RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.zero,
-                                      ),
-                                      side: const BorderSide(color: cyan),
-                                    ),
-                                    icon: const Icon(Icons.eco_outlined),
-                                    label: Text('Add "$_q" to Supplements'),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () => _quickAdd(_IntakeType.medication),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: gold,
-                                      shape: const RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.zero,
-                                      ),
-                                      side: const BorderSide(color: gold),
-                                    ),
-                                    icon: const Icon(Icons.medication_liquid_outlined),
-                                    label: Text('Add "$_q" to Meds'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                          ],
-                          for (final item in _results)
-                            ListTile(
-                              onTap: () => _logFromLibrary(item),
-                              leading: Icon(
-                                item.type == _IntakeType.medication
-                                    ? Icons.medication_liquid_outlined
-                                    : Icons.eco_outlined,
-                                color: item.type == _IntakeType.medication ? gold : cyan,
-                              ),
-                              title: Text(
-                                item.name,
-                                style: const TextStyle(
-                                  color: cyan,
-                                  fontFamily: 'monospace',
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              trailing: _TagChip(
-                                label: item.type == _IntakeType.medication ? 'MED' : 'SUPP',
-                                color: item.type == _IntakeType.medication ? gold : cyan,
-                              ),
-                            ),
-                        ],
-                      ),
-                  ),
-        ],
-      ),
             if (_barcodeBusy)
               const Positioned.fill(
                 child: IgnorePointer(
@@ -2232,6 +2303,7 @@ class _LogPick {
   final String unit;
   final String block;
   final String notes;
+
   /// When true, row is planned only (`is_taken` false) until user taps TAKE.
   final bool planOnly;
   final ReminderState reminder;
@@ -2286,8 +2358,9 @@ class _LogPickDialogState extends State<_LogPickDialog> {
     super.initState();
     final a = widget.amountPrefill;
     if (a != null && a > 0) {
-      _amount.text =
-          a == a.roundToDouble() ? a.toInt().toString() : a.toString();
+      _amount.text = a == a.roundToDouble()
+          ? a.toInt().toString()
+          : a.toString();
     }
     final u = (widget.unitPrefill ?? '').trim();
     if (u.isNotEmpty) _unit = u;
@@ -2306,9 +2379,11 @@ class _LogPickDialogState extends State<_LogPickDialog> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
+    const gold = AppColors.cyberGold;
     final accent = widget.type == _IntakeType.medication ? gold : cyan;
-    final units = widget.type == _IntakeType.medication ? _medUnits : _suppUnits;
+    final units = widget.type == _IntakeType.medication
+        ? _medUnits
+        : _suppUnits;
     final loc = context.l10n;
 
     return AlertDialog(
@@ -2427,15 +2502,15 @@ class _LogPickDialogState extends State<_LogPickDialog> {
                   child: DropdownButtonFormField<String>(
                     initialValue: _block,
                     items: _blocks
-                        .map((b) => DropdownMenuItem(
-                              value: b,
-                              child: Text(b),
-                            ))
+                        .map((b) => DropdownMenuItem(value: b, child: Text(b)))
                         .toList(growable: false),
                     onChanged: (v) => setState(() => _block = v ?? _block),
                     decoration: InputDecoration(
                       labelText: 'Block',
-                      labelStyle: TextStyle(color: accent, fontFamily: 'monospace'),
+                      labelStyle: TextStyle(
+                        color: accent,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: accent, width: 1),
@@ -2455,12 +2530,19 @@ class _LogPickDialogState extends State<_LogPickDialog> {
                 Expanded(
                   child: TextField(
                     controller: _amount,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: const TextStyle(
+                      color: cyan,
+                      fontFamily: 'monospace',
+                    ),
                     decoration: InputDecoration(
                       labelText: 'Amount',
-                      labelStyle: TextStyle(color: accent, fontFamily: 'monospace'),
+                      labelStyle: TextStyle(
+                        color: accent,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: accent, width: 1),
@@ -2477,15 +2559,15 @@ class _LogPickDialogState extends State<_LogPickDialog> {
                   child: DropdownButtonFormField<String>(
                     initialValue: _unit,
                     items: units
-                        .map((u) => DropdownMenuItem(
-                              value: u,
-                              child: Text(u),
-                            ))
+                        .map((u) => DropdownMenuItem(value: u, child: Text(u)))
                         .toList(growable: false),
                     onChanged: (v) => setState(() => _unit = v ?? _unit),
                     decoration: InputDecoration(
                       labelText: 'Unit',
-                      labelStyle: TextStyle(color: accent, fontFamily: 'monospace'),
+                      labelStyle: TextStyle(
+                        color: accent,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: accent, width: 1),
@@ -2534,9 +2616,9 @@ class _LogPickDialogState extends State<_LogPickDialog> {
           onPressed: () {
             final amt = _d(_amount.text);
             if (amt <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(loc.msgValidAmount)),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(loc.msgValidAmount)));
               return;
             }
             Navigator.of(context).pop(
@@ -2557,4 +2639,3 @@ class _LogPickDialogState extends State<_LogPickDialog> {
     );
   }
 }
-

@@ -11,9 +11,7 @@ class BiometricAuthService {
   static const _kBiometricEnabled = 'biometric_enabled';
 
   static final LocalAuthentication _auth = LocalAuthentication();
-  static const FlutterSecureStorage _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
   static Future<bool> isEnabled() async {
     final v = await _storage.read(key: _kBiometricEnabled);
@@ -46,14 +44,28 @@ class BiometricAuthService {
     try {
       final canCheck = await _auth.canCheckBiometrics;
       final supported = await _auth.isDeviceSupported();
+      debugPrint(
+        'DEBUG: BiometricAuthService.authenticate: pre-check '
+        'canCheckBiometrics=$canCheck isDeviceSupported=$supported',
+      );
       if (!canCheck && !supported) {
         debugPrint(
-          'DEBUG: BiometricAuthService.authenticate: device not supported '
-          '(canCheckBiometrics=$canCheck, isDeviceSupported=$supported)',
+          'DEBUG: BiometricAuthService.authenticate: skipping authenticate() — '
+          'both canCheckBiometrics and isDeviceSupported are false',
         );
         return false;
       }
-      if (!await isAvailable()) return false;
+      final types = await _auth.getAvailableBiometrics();
+      debugPrint(
+        'DEBUG: BiometricAuthService.authenticate: getAvailableBiometrics=$types',
+      );
+      if (types.isEmpty) {
+        debugPrint(
+          'DEBUG: BiometricAuthService.authenticate: skipping authenticate() — '
+          'no enrolled biometrics',
+        );
+        return false;
+      }
 
       final ok = await _auth.authenticate(
         localizedReason: 'Please authenticate to access Bio-Cyber OS',

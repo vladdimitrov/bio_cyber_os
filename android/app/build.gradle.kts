@@ -1,3 +1,5 @@
+// App module uses Kotlin DSL only (this file). There is no Groovy `android/app/build.gradle`.
+// Release shrinking and ABI filters are configured below (Groovy equivalents noted in comments).
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -29,8 +31,16 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Commercial release: 32-bit ARM, 64-bit ARM, 64-bit x86 (emulators / some tablets).
+        // Groovy equivalent: ndk { abiFilters "armeabi-v7a", "arm64-v8a", "x86_64" }
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64")
+        }
     }
 
+    // Release shrinking (Groovy equivalent: minifyEnabled true, shrinkResources true,
+    // proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro').
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -38,6 +48,8 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
+            // Groovy equivalent: crunchPngs true (AGP still exposes isCrunchPngs on release).
+            isCrunchPngs = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

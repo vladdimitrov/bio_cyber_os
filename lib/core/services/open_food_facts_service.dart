@@ -5,7 +5,8 @@ import 'package:http/http.dart' as http;
 class OpenFoodFactsService {
   OpenFoodFactsService._();
 
-  /// Returns a map with keys: name, calories, proteins, carbs, fats (per 100g).
+  /// Returns a map with keys: name, brand, ingredients_text, calories, proteins,
+  /// carbs, fats (macros per 100g where applicable).
   /// Returns null if product not found or response invalid.
   static Future<Map<String, dynamic>?> fetchByBarcode(String barcode) async {
     final code = barcode.trim();
@@ -40,12 +41,17 @@ class OpenFoodFactsService {
         s(product['product_name']).isNotEmpty ? s(product['product_name']) : s(product['generic_name']);
     if (name.isEmpty) return null;
 
+    final brand = s(product['brands']);
+    final ingredientsText = s(product['ingredients_text']);
+
     final nutr = product['nutriments'];
     final nutriments =
         (nutr is Map<String, dynamic>) ? nutr : const <String, dynamic>{};
 
     return <String, dynamic>{
       'name': name,
+      'brand': brand,
+      'ingredients_text': ingredientsText,
       'calories': d(nutriments['energy-kcal_100g']),
       'proteins': d(nutriments['proteins_100g']),
       'carbs': d(nutriments['carbohydrates_100g']),

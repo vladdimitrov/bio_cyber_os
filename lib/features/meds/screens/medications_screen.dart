@@ -5,6 +5,7 @@ import 'package:bio_cyber_os/l10n/app_localizations.dart';
 import 'package:bio_cyber_os/l10n/context_l10n.dart';
 import 'package:bio_cyber_os/l10n/meal_labels.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/supabase_error_message.dart';
 import '../../../core/supabase_log_date.dart';
@@ -126,14 +127,18 @@ class _MedicationsScreenState extends State<MedicationsScreen>
       selectedDate = DateTime(d.year, d.month, d.day);
       _fetchData().then((_) {
         if (!mounted) return;
-        WidgetsBinding.instance.addPostFrameCallback((_) => _ensureHighlightVisible());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _ensureHighlightVisible(),
+        );
       });
     }
     if (widget.focusLogId != null &&
         widget.focusLogId!.trim().isNotEmpty &&
         widget.focusLogId != oldWidget.focusLogId) {
       setState(() => _highlightLogId = widget.focusLogId);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _ensureHighlightVisible());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _ensureHighlightVisible(),
+      );
     }
   }
 
@@ -344,17 +349,17 @@ class _MedicationsScreenState extends State<MedicationsScreen>
     setState(() {
       _workingLogId = id;
       medLogs = medLogs
-          .map((e) => (e['id'] ?? '').toString() == id
-              ? {
-                  ...e,
-                  'is_taken': true,
-                  'taken_at': nowIsoLocal,
-                }
-              : e)
+          .map(
+            (e) => (e['id'] ?? '').toString() == id
+                ? {...e, 'is_taken': true, 'taken_at': nowIsoLocal}
+                : e,
+          )
           .toList(growable: false);
       _highlightLogId = id;
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureHighlightVisible());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _ensureHighlightVisible(),
+    );
 
     try {
       final uid = _client.auth.currentUser?.id;
@@ -369,10 +374,14 @@ class _MedicationsScreenState extends State<MedicationsScreen>
         await _fetchData();
         return;
       }
-      await _client.from(_logsTable).update({
-        'is_taken': true,
-        'taken_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', id).eq('user_id', uid);
+      await _client
+          .from(_logsTable)
+          .update({
+            'is_taken': true,
+            'taken_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', id)
+          .eq('user_id', uid);
 
       await NotificationService.cancelByKey('medication_logs:$id');
       await _fetchData();
@@ -412,7 +421,8 @@ class _MedicationsScreenState extends State<MedicationsScreen>
         : (log['unit_type'] ?? '').toString().trim();
 
     final isTaken = _isTaken(log);
-    final baseLocal = _takenAtLocal(log) ?? _scheduledAtLocal(log) ?? DateTime.now();
+    final baseLocal =
+        _takenAtLocal(log) ?? _scheduledAtLocal(log) ?? DateTime.now();
 
     DateTime? reminderAtLocal;
     try {
@@ -432,8 +442,9 @@ class _MedicationsScreenState extends State<MedicationsScreen>
       context: context,
       builder: (dialogCtx) => _EditMedLogDialog(
         logId: id,
-        medicationName:
-            name.isEmpty ? dialogCtx.l10n.defaultMedicationName : name,
+        medicationName: name.isEmpty
+            ? dialogCtx.l10n.defaultMedicationName
+            : name,
         isTaken: isTaken,
         existingAmount: existingAmount > 0 ? existingAmount : null,
         existingUnit: existingUnit,
@@ -461,11 +472,18 @@ class _MedicationsScreenState extends State<MedicationsScreen>
     final picked = await showDialog<_MedIntakePick?>(
       context: context,
       builder: (dialogCtx) => _LogMedIntakeDialog(
-        medicationName:
-            name.isEmpty ? dialogCtx.l10n.defaultMedicationName : name,
+        medicationName: name.isEmpty
+            ? dialogCtx.l10n.defaultMedicationName
+            : name,
       ),
     );
     if (picked == null) return;
+    if (!mounted) return;
+    final l10n = context.l10n;
+    final reminderNotificationTitle = l10n.reminderTimeToTake(
+      name.isEmpty ? l10n.defaultMedicationName : name,
+    );
+    final reminderNotificationBody = l10n.reminderBody;
 
     if (_client.auth.currentUser == null) {
       if (!mounted) return;
@@ -538,10 +556,8 @@ class _MedicationsScreenState extends State<MedicationsScreen>
         if (rLocal != null && newId.isNotEmpty) {
           await NotificationService.scheduleByKey(
             key: 'medication_logs:$newId',
-            title: context.l10n.reminderTimeToTake(
-              name.isEmpty ? context.l10n.defaultMedicationName : name,
-            ),
-            body: context.l10n.reminderBody,
+            title: reminderNotificationTitle,
+            body: reminderNotificationBody,
             whenLocal: rLocal,
             payload: {
               'item_type': 'medication',
@@ -606,7 +622,9 @@ class _MedicationsScreenState extends State<MedicationsScreen>
     }
   }
 
-  Future<void> _pickMedicationFromLibrary({required String scheduleBlock}) async {
+  Future<void> _pickMedicationFromLibrary({
+    required String scheduleBlock,
+  }) async {
     final uid = _client.auth.currentUser?.id;
     final loc = context.l10n;
     await LibrarySearchSheet.show(
@@ -625,19 +643,15 @@ class _MedicationsScreenState extends State<MedicationsScreen>
       getSubtitle: (row) {
         final rawDose = row['daily_dosage'];
         final rawUnit = row['unit_type'];
-        final dose = (rawDose is num) ? rawDose.toDouble() : double.tryParse('$rawDose') ?? 0;
+        final dose = (rawDose is num)
+            ? rawDose.toDouble()
+            : double.tryParse('$rawDose') ?? 0;
         final unit = (rawUnit ?? '').toString().trim();
         if (dose <= 0) return loc.libraryNoDefaultDose;
-        return loc.libraryDefaultDose(
-          '$dose',
-          unit.isEmpty ? 'pcs' : unit,
-        );
+        return loc.libraryDefaultDose('$dose', unit.isEmpty ? 'pcs' : unit);
       },
       getIcon: (_) => Icons.medication_liquid_outlined,
-      onPick: (row) => _insertMedicationLog(
-        row,
-        scheduleBlock: scheduleBlock,
-      ),
+      onPick: (row) => _insertMedicationLog(row, scheduleBlock: scheduleBlock),
     );
   }
 
@@ -645,6 +659,7 @@ class _MedicationsScreenState extends State<MedicationsScreen>
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
+    const gold = AppColors.cyberGold;
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
@@ -652,7 +667,15 @@ class _MedicationsScreenState extends State<MedicationsScreen>
       appBar: widget.embedded
           ? null
           : AppBar(
-              title: Text(l10n.screenMeds),
+              title: Text(
+                l10n.screenMeds,
+                style: const TextStyle(
+                  color: AppColors.cyberGold,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              foregroundColor: gold,
               actions: [
                 IconButton(
                   tooltip: l10n.addMedicationToLibrary,
@@ -674,12 +697,19 @@ class _MedicationsScreenState extends State<MedicationsScreen>
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: cyan, width: 2)),
             ),
-            child: Row(
-              children: [
-                IconButton(
+            child: DefaultTextStyle(
+              style: const TextStyle(
+                color: AppColors.cyberGold,
+                fontFamily: 'monospace',
+                letterSpacing: 0.6,
+                fontSize: 13,
+              ),
+              child: Row(
+                children: [
+                  IconButton(
                   onPressed: () => _shiftDay(-1),
                   icon: const Icon(Icons.chevron_left),
-                  color: cyan,
+                  color: gold,
                   tooltip: l10n.prevDay,
                 ),
                 Expanded(
@@ -687,7 +717,7 @@ class _MedicationsScreenState extends State<MedicationsScreen>
                     child: TextButton(
                       onPressed: _pickDate,
                       style: TextButton.styleFrom(
-                        foregroundColor: cyan,
+                        foregroundColor: gold,
                         shape: const RoundedRectangleBorder(
                           borderRadius: BorderRadius.zero,
                         ),
@@ -706,10 +736,11 @@ class _MedicationsScreenState extends State<MedicationsScreen>
                 IconButton(
                   onPressed: () => _shiftDay(1),
                   icon: const Icon(Icons.chevron_right),
-                  color: cyan,
+                  color: gold,
                   tooltip: l10n.nextDay,
                 ),
-              ],
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -725,7 +756,7 @@ class _MedicationsScreenState extends State<MedicationsScreen>
                             _emptyLogsMessage(l10n),
                             textAlign: TextAlign.left,
                             style: const TextStyle(
-                              color: Color(0x8800F3FF),
+                              color: AppColors.cyberGoldMuted,
                               fontFamily: 'monospace',
                               fontSize: 12,
                               height: 1.35,
@@ -734,211 +765,213 @@ class _MedicationsScreenState extends State<MedicationsScreen>
                         ),
                       for (final block in _blocks)
                         _BlockSection(
-                              title: localizedTimeBlock(l10n, block),
-                              addLabel: l10n.medsAddBlockMed(
-                                localizedTimeBlock(l10n, block),
-                              ),
-                              entries: _groupedByBlock()[block]!,
-                              onAdd: () => _pickMedicationFromLibrary(
-                                scheduleBlock: block,
-                              ),
-                              buildRow: (log) {
-                                final med = log['medications'];
-                                final name = (med is Map<String, dynamic>)
-                                    ? (med['name'] ?? l10n.unknown).toString()
-                                    : l10n.unknown;
-                                final doseAmount = (log['dose_amount'] is num)
-                                    ? (log['dose_amount'] as num).toDouble()
-                                    : double.tryParse(
-                                        (log['dose_amount'] ?? '').toString(),
-                                      );
-                                final unit = (log['unit_type'] ?? '').toString();
-                                final isTakenRow = _isTaken(log);
-                                final time = _hhmmFromIso(
-                                  isTakenRow
-                                      ? log['taken_at']
-                                      : log['scheduled_at'],
-                                );
-                                final doseLine =
-                                    (doseAmount == null || doseAmount <= 0)
-                                        ? ''
-                                        : '${doseAmount == doseAmount.roundToDouble() ? doseAmount.toInt() : doseAmount} $unit'
-                                            .trim();
-                                final note =
-                                    (log['notes'] ?? '').toString().trim();
-                                final reminder = log['reminder_at'];
-                                final reminderLabel = (reminder == null ||
-                                        reminder.toString().trim().isEmpty)
-                                    ? ''
-                                    : l10n.reminderAtTime(_hhmmFromIso(reminder));
-                                final id = (log['id'] ?? '').toString();
-                                final isMissed = _isMissed(log);
-                                final rowKey =
-                                    _rowKeys.putIfAbsent(id, () => GlobalKey());
-                                final highlight = (_highlightLogId ?? '').trim() ==
-                                    id.trim();
+                          title: localizedTimeBlock(l10n, block),
+                          addLabel: l10n.medsAddBlockMed(
+                            localizedTimeBlock(l10n, block),
+                          ),
+                          entries: _groupedByBlock()[block]!,
+                          onAdd: () =>
+                              _pickMedicationFromLibrary(scheduleBlock: block),
+                          buildRow: (log) {
+                            final med = log['medications'];
+                            final name = (med is Map<String, dynamic>)
+                                ? (med['name'] ?? l10n.unknown).toString()
+                                : l10n.unknown;
+                            final doseAmount = (log['dose_amount'] is num)
+                                ? (log['dose_amount'] as num).toDouble()
+                                : double.tryParse(
+                                    (log['dose_amount'] ?? '').toString(),
+                                  );
+                            final unit = (log['unit_type'] ?? '').toString();
+                            final isTakenRow = _isTaken(log);
+                            final time = _hhmmFromIso(
+                              isTakenRow
+                                  ? log['taken_at']
+                                  : log['scheduled_at'],
+                            );
+                            final doseLine =
+                                (doseAmount == null || doseAmount <= 0)
+                                ? ''
+                                : '${doseAmount == doseAmount.roundToDouble() ? doseAmount.toInt() : doseAmount} $unit'
+                                      .trim();
+                            final note = (log['notes'] ?? '').toString().trim();
+                            final reminder = log['reminder_at'];
+                            final reminderLabel =
+                                (reminder == null ||
+                                    reminder.toString().trim().isEmpty)
+                                ? ''
+                                : l10n.reminderAtTime(_hhmmFromIso(reminder));
+                            final id = (log['id'] ?? '').toString();
+                            final isMissed = _isMissed(log);
+                            final rowKey = _rowKeys.putIfAbsent(
+                              id,
+                              () => GlobalKey(),
+                            );
+                            final highlight =
+                                (_highlightLogId ?? '').trim() == id.trim();
 
-                                return Container(
-                                  key: rowKey,
-                                  margin: const EdgeInsets.only(bottom: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: highlight
-                                          ? const Color(0xFFFF3B30)
-                                          : (isTakenRow
-                                              ? const Color(0x2200F3FF)
-                                              : const Color(0x6600F3FF)),
-                                      width: highlight ? 2 : 1,
+                            return Container(
+                              key: rowKey,
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: highlight
+                                      ? const Color(0xFFFF3B30)
+                                      : (isTakenRow
+                                            ? const Color(0x2200F3FF)
+                                            : const Color(0x6600F3FF)),
+                                  width: highlight ? 2 : 1,
+                                ),
+                              ),
+                              child: Opacity(
+                                opacity: isTakenRow ? 1.0 : 0.72,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      isTakenRow
+                                          ? Icons.check_circle
+                                          : Icons.radio_button_unchecked,
+                                      color: isMissed ? Colors.red : gold,
+                                      size: 18,
                                     ),
-                                  ),
-                                  child: Opacity(
-                                    opacity: isTakenRow ? 1.0 : 0.72,
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          isTakenRow
-                                              ? Icons.check_circle
-                                              : Icons.radio_button_unchecked,
-                                          color: isMissed ? Colors.red : cyan,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
                                             children: [
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      '$time — $name ${doseLine.isEmpty ? '' : '($doseLine)'}'
-                                                          .trim(),
-                                                      style: const TextStyle(
-                                                        color: cyan,
-                                                        fontFamily: 'monospace',
-                                                        letterSpacing: 0.6,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 13,
-                                                      ),
-                                                    ),
+                                              Expanded(
+                                                child: Text(
+                                                  '$time — $name ${doseLine.isEmpty ? '' : '($doseLine)'}'
+                                                      .trim(),
+                                                  style: const TextStyle(
+                                                    color: AppColors.cyberGold,
+                                                    fontFamily: 'monospace',
+                                                    letterSpacing: 0.6,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
                                                   ),
-                                                  if (isMissed) ...[
-                                                    const SizedBox(width: 8),
-                                                    Text(
-                                                      l10n.missed,
-                                                      style: const TextStyle(
-                                                        color: Colors.red,
-                                                        fontFamily: 'monospace',
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                        letterSpacing: 0.8,
-                                                        fontSize: 11,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ],
+                                                ),
                                               ),
-                                              if (reminderLabel.isNotEmpty) ...[
-                                                const SizedBox(height: 2),
+                                              if (isMissed) ...[
+                                                const SizedBox(width: 8),
                                                 Text(
-                                                  reminderLabel,
+                                                  l10n.missed,
                                                   style: const TextStyle(
-                                                    color: Color(0x8800F3FF),
+                                                    color: Colors.red,
                                                     fontFamily: 'monospace',
+                                                    fontWeight: FontWeight.w900,
+                                                    letterSpacing: 0.8,
                                                     fontSize: 11,
-                                                  ),
-                                                ),
-                                              ],
-                                              if (note.isNotEmpty) ...[
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  note,
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                    fontFamily: 'monospace',
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              ],
-                                              if (!isTakenRow) ...[
-                                                const SizedBox(height: 8),
-                                                OutlinedButton(
-                                                  onPressed: (_workingLogId ==
-                                                          id)
-                                                      ? null
-                                                      : () => _takePlanned(log),
-                                                  style:
-                                                      OutlinedButton.styleFrom(
-                                                    foregroundColor: cyan,
-                                                    side: const BorderSide(
-                                                        color: cyan, width: 1),
-                                                    shape:
-                                                        const RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.zero,
-                                                    ),
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 8),
-                                                    minimumSize: Size.zero,
-                                                    tapTargetSize:
-                                                        MaterialTapTargetSize
-                                                            .shrinkWrap,
-                                                  ),
-                                                  child: Text(
-                                                    l10n.take,
-                                                    style: const TextStyle(
-                                                      fontFamily: 'monospace',
-                                                      fontWeight:
-                                                          FontWeight.w900,
-                                                      letterSpacing: 1.0,
-                                                      fontSize: 12,
-                                                    ),
                                                   ),
                                                 ),
                                               ],
                                             ],
                                           ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                IconButton(
-                                  tooltip: l10n.editLog,
-                                  onPressed: (_workingLogId == id)
-                                      ? null
-                                      : () => _editLog(log),
-                                  icon: const Icon(Icons.edit, color: cyan),
-                                  constraints: const BoxConstraints(
-                                    minWidth: 36,
-                                    minHeight: 36,
-                                  ),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                        IconButton(
-                                          tooltip: l10n.deleteLog,
-                                          onPressed: (_workingLogId == id)
-                                              ? null
-                                              : () => _deleteLog(log),
-                                          icon: const Icon(Icons.delete,
-                                              color: Colors.red),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 36,
-                                            minHeight: 36,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                        ),
-                                      ],
+                                          if (reminderLabel.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              reminderLabel,
+                                              style: const TextStyle(
+                                                color: AppColors.cyberGoldMuted,
+                                                fontFamily: 'monospace',
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ],
+                                          if (note.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              note,
+                                              style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontFamily: 'monospace',
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                          if (!isTakenRow) ...[
+                                            const SizedBox(height: 8),
+                                            OutlinedButton(
+                                              onPressed: (_workingLogId == id)
+                                                  ? null
+                                                  : () => _takePlanned(log),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: gold,
+                                                side: const BorderSide(
+                                                  color: cyan,
+                                                  width: 1,
+                                                ),
+                                                shape:
+                                                    const RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.zero,
+                                                    ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 8,
+                                                    ),
+                                                minimumSize: Size.zero,
+                                                tapTargetSize:
+                                                    MaterialTapTargetSize
+                                                        .shrinkWrap,
+                                              ),
+                                              child: Text(
+                                                l10n.take,
+                                                style: const TextStyle(
+                                                  fontFamily: 'monospace',
+                                                  fontWeight: FontWeight.w900,
+                                                  letterSpacing: 1.0,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                );
-                              },
-                            ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      tooltip: l10n.editLog,
+                                      onPressed: (_workingLogId == id)
+                                          ? null
+                                          : () => _editLog(log),
+                                      icon: Icon(Icons.edit, color: gold),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 36,
+                                        minHeight: 36,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    IconButton(
+                                      tooltip: l10n.deleteLog,
+                                      onPressed: (_workingLogId == id)
+                                          ? null
+                                          : () => _deleteLog(log),
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        color: Colors.red,
+                                      ),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 36,
+                                        minHeight: 36,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                     ],
                   ),
           ),
@@ -974,13 +1007,11 @@ class _BlockSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         border: Border.all(color: cyan, width: 1),
-        boxShadow: const [
-          BoxShadow(color: Color(0x2200F3FF), blurRadius: 8),
-        ],
+        boxShadow: const [BoxShadow(color: Color(0x2200F3FF), blurRadius: 8)],
       ),
       child: DefaultTextStyle(
         style: const TextStyle(
-          color: cyan,
+          color: AppColors.cyberGold,
           fontFamily: 'monospace',
           letterSpacing: 0.4,
         ),
@@ -1001,7 +1032,8 @@ class _BlockSection extends StatelessWidget {
                 TextButton(
                   onPressed: onAdd,
                   style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF88CCFF),
+                    foregroundColor:
+                        AppColors.cyberGold.withValues(alpha: 0.88),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1011,10 +1043,7 @@ class _BlockSection extends StatelessWidget {
                     children: [
                       const Icon(Icons.add, size: 14),
                       const SizedBox(width: 2),
-                      Text(
-                        addLabel,
-                        style: const TextStyle(fontSize: 11),
-                      ),
+                      Text(addLabel, style: const TextStyle(fontSize: 11)),
                     ],
                   ),
                 ),
@@ -1022,7 +1051,7 @@ class _BlockSection extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             if (entries.isEmpty)
-              const Text('—', style: TextStyle(color: Color(0x8800F3FF)))
+              const Text('—', style: TextStyle(color: AppColors.cyberGoldMuted))
             else
               for (final e in entries) buildRow(e),
           ],
@@ -1115,130 +1144,58 @@ class _LogMedIntakeDialogState extends State<_LogMedIntakeDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-            Text(
-              widget.medicationName,
-              style: const TextStyle(
-                color: cyan,
-                fontFamily: 'monospace',
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final picked = await showTimePicker(
-                  context: context,
-                  initialTime: _intakeTime,
-                );
-                if (picked == null) return;
-                if (!mounted) return;
-                setState(() => _intakeTime = picked);
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: cyan,
-                side: const BorderSide(color: cyan, width: 1),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-              ),
-              icon: const Icon(Icons.schedule),
-              label: Text(
-                intakeLabel,
+              Text(
+                widget.medicationName,
                 style: const TextStyle(
+                  color: cyan,
                   fontFamily: 'monospace',
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.8,
-                  fontSize: 11,
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _amountCtrl,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                labelText: loc.amountTaken,
-                labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1.5),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: _unit,
-              dropdownColor: bg,
-              decoration: InputDecoration(
-                labelText: loc.unit,
-                labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1.5),
-                ),
-              ),
-              items: _units
-                  .map(
-                    (u) => DropdownMenuItem(
-                      value: u,
-                      child: Text(
-                        u,
-                        style: const TextStyle(
-                          color: cyan,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: (v) => setState(() => _unit = v ?? _unit),
-            ),
-            const SizedBox(height: 12),
-            ReminderSection(
-              state: _reminder,
-              onChanged: (s) => setState(() => _reminder = s),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    loc.fuelScheduleMultiDays,
-                    style: const TextStyle(
-                      color: Color(0x8800F3FF),
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      letterSpacing: 1.0,
-                      fontWeight: FontWeight.w800,
-                    ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final picked = await showTimePicker(
+                    context: context,
+                    initialTime: _intakeTime,
+                  );
+                  if (picked == null) return;
+                  if (!mounted) return;
+                  setState(() => _intakeTime = picked);
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: cyan,
+                  side: const BorderSide(color: cyan, width: 1),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
                   ),
                 ),
-                Switch(
-                  value: _repeatEnabled,
-                  activeThumbColor: cyan,
-                  onChanged: (v) => setState(() => _repeatEnabled = v),
+                icon: const Icon(Icons.schedule),
+                label: Text(
+                  intakeLabel,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    fontSize: 11,
+                  ),
                 ),
-              ],
-            ),
-            if (_repeatEnabled) ...[
-              const SizedBox(height: 8),
+              ),
+              const SizedBox(height: 12),
               TextField(
-                controller: _repeatCtrl,
-                keyboardType: TextInputType.number,
+                controller: _amountCtrl,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 style: const TextStyle(color: cyan, fontFamily: 'monospace'),
                 decoration: InputDecoration(
-                  labelText: loc.numberOfConsecutiveDays,
-                  labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                  labelText: loc.amountTaken,
+                  labelStyle: const TextStyle(
+                    color: cyan,
+                    fontFamily: 'monospace',
+                  ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
                     borderSide: BorderSide(color: cyan, width: 1),
@@ -1249,25 +1206,113 @@ class _LogMedIntakeDialogState extends State<_LogMedIntakeDialog> {
                   ),
                 ),
               ),
-            ],
-            const SizedBox(height: 12),
-            TextField(
-              controller: _notesCtrl,
-              maxLines: 3,
-              style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                labelText: loc.notes,
-                labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: _unit,
+                dropdownColor: bg,
+                decoration: InputDecoration(
+                  labelText: loc.unit,
+                  labelStyle: const TextStyle(
+                    color: cyan,
+                    fontFamily: 'monospace',
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: cyan, width: 1),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: cyan, width: 1.5),
+                  ),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: cyan, width: 1.5),
+                items: _units
+                    .map(
+                      (u) => DropdownMenuItem(
+                        value: u,
+                        child: Text(
+                          u,
+                          style: const TextStyle(
+                            color: cyan,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (v) => setState(() => _unit = v ?? _unit),
+              ),
+              const SizedBox(height: 12),
+              ReminderSection(
+                state: _reminder,
+                onChanged: (s) => setState(() => _reminder = s),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      loc.fuelScheduleMultiDays,
+                      style: const TextStyle(
+                        color: Color(0x8800F3FF),
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        letterSpacing: 1.0,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Switch(
+                    value: _repeatEnabled,
+                    activeThumbColor: cyan,
+                    onChanged: (v) => setState(() => _repeatEnabled = v),
+                  ),
+                ],
+              ),
+              if (_repeatEnabled) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _repeatCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                  decoration: InputDecoration(
+                    labelText: loc.numberOfConsecutiveDays,
+                    labelStyle: const TextStyle(
+                      color: cyan,
+                      fontFamily: 'monospace',
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.zero,
+                      borderSide: BorderSide(color: cyan, width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.zero,
+                      borderSide: BorderSide(color: cyan, width: 1.5),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _notesCtrl,
+                maxLines: 3,
+                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                decoration: InputDecoration(
+                  labelText: loc.notes,
+                  labelStyle: const TextStyle(
+                    color: cyan,
+                    fontFamily: 'monospace',
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: cyan, width: 1),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: cyan, width: 1.5),
+                  ),
                 ),
               ),
-            ),
             ],
           ),
         ),
@@ -1281,9 +1326,9 @@ class _LogMedIntakeDialogState extends State<_LogMedIntakeDialog> {
           onPressed: () {
             final amt = _parseAmount();
             if (amt == null || amt <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(loc.msgValidAmount)),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(loc.msgValidAmount)));
               return;
             }
             var repeat = 1;
@@ -1354,7 +1399,9 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
     super.initState();
     final amt = widget.existingAmount ?? 1.0;
     _amountCtrl = TextEditingController(
-      text: amt == amt.roundToDouble() ? amt.toInt().toString() : amt.toString(),
+      text: amt == amt.roundToDouble()
+          ? amt.toInt().toString()
+          : amt.toString(),
     );
     _notesCtrl.text = widget.existingNotes;
     _unit = widget.existingUnit.trim().isEmpty ? 'pcs' : widget.existingUnit;
@@ -1407,8 +1454,12 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
 
   DateTime? _computeReminderAtLocal(DateTime scheduledAtLocal) {
     if (!_reminder.enabled) return null;
-    if (_reminder.mode == ReminderMode.atConsumptionTime) return scheduledAtLocal;
-    return scheduledAtLocal.subtract(Duration(minutes: _reminder.offsetMinutes));
+    if (_reminder.mode == ReminderMode.atConsumptionTime) {
+      return scheduledAtLocal;
+    }
+    return scheduledAtLocal.subtract(
+      Duration(minutes: _reminder.offsetMinutes),
+    );
   }
 
   Future<void> _save() async {
@@ -1430,9 +1481,9 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
       final amt = _parseAmount();
       if (amt == null || amt <= 0) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.msgValidDose)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.l10n.msgValidDose)));
         return;
       }
 
@@ -1440,7 +1491,9 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
       final reminderLocal = _computeReminderAtLocal(scheduledLocal);
       final reminderOffsetMinutes = !_reminder.enabled
           ? null
-          : (_reminder.mode == ReminderMode.minutesBefore ? _reminder.offsetMinutes : 0);
+          : (_reminder.mode == ReminderMode.minutesBefore
+                ? _reminder.offsetMinutes
+                : 0);
 
       final update = <String, dynamic>{
         'user_id': uid,
@@ -1449,7 +1502,8 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
         'notes': _notesCtrl.text,
         'created_at': scheduledLocal.toUtc().toIso8601String(),
         'scheduled_at': scheduledLocal.toUtc().toIso8601String(),
-        if (widget.isTaken) 'taken_at': scheduledLocal.toUtc().toIso8601String(),
+        if (widget.isTaken)
+          'taken_at': scheduledLocal.toUtc().toIso8601String(),
         'reminder_at': reminderLocal?.toUtc().toIso8601String(),
         'reminder_offset_minutes': reminderOffsetMinutes,
       };
@@ -1461,6 +1515,7 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
 
       await NotificationService.cancelByKey('medication_logs:${widget.logId}');
       if (reminderLocal != null) {
+        if (!mounted) return;
         await NotificationService.scheduleByKey(
           key: 'medication_logs:${widget.logId}',
           title: context.l10n.reminderTimeToTake(widget.medicationName),
@@ -1529,10 +1584,16 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
                   child: TextField(
                     controller: _amountCtrl,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    style: const TextStyle(
+                      color: cyan,
+                      fontFamily: 'monospace',
+                    ),
                     decoration: InputDecoration(
                       labelText: loc.amountLabelShort,
-                      labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      labelStyle: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: cyan, width: 1),
@@ -1551,7 +1612,10 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
                     initialValue: _units.contains(_unit) ? _unit : 'pcs',
                     decoration: InputDecoration(
                       labelText: loc.unit,
-                      labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                      labelStyle: const TextStyle(
+                        color: cyan,
+                        fontFamily: 'monospace',
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: cyan, width: 1),
@@ -1566,9 +1630,13 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
                         .map(
                           (u) => DropdownMenuItem(
                             value: u,
-                            child: Text(u,
-                                style: const TextStyle(
-                                    color: cyan, fontFamily: 'monospace')),
+                            child: Text(
+                              u,
+                              style: const TextStyle(
+                                color: cyan,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
                           ),
                         )
                         .toList(growable: false),
@@ -1581,8 +1649,10 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
             OutlinedButton.icon(
               onPressed: _pickTime,
               icon: const Icon(Icons.schedule),
-              label: Text(timeLabel,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              label: Text(
+                timeLabel,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: cyan,
                 side: const BorderSide(color: cyan, width: 1),
@@ -1603,7 +1673,10 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
               style: const TextStyle(color: cyan, fontFamily: 'monospace'),
               decoration: InputDecoration(
                 labelText: loc.notes,
-                labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                labelStyle: const TextStyle(
+                  color: cyan,
+                  fontFamily: 'monospace',
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
                   borderSide: BorderSide(color: cyan, width: 1),
@@ -1622,10 +1695,7 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
           child: Text(loc.cancel),
         ),
-        TextButton(
-          onPressed: _saving ? null : _save,
-          child: Text(loc.save),
-        ),
+        TextButton(onPressed: _saving ? null : _save, child: Text(loc.save)),
       ],
     );
   }
@@ -1666,17 +1736,14 @@ class _MedicationLibraryDialogState extends State<_MedicationLibraryDialog> {
     }
     setState(() => _saving = true);
     try {
-      await _client.from('medications').insert({
-        'name': name,
-        'user_id': uid,
-      });
+      await _client.from('medications').insert({'name': name, 'user_id': uid});
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(supabaseWriteErrorMessage(e))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(supabaseWriteErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1718,10 +1785,7 @@ class _MedicationLibraryDialogState extends State<_MedicationLibraryDialog> {
           onPressed: _saving ? null : () => Navigator.of(context).pop(false),
           child: Text(loc.cancel),
         ),
-        TextButton(
-          onPressed: _saving ? null : _save,
-          child: Text(loc.save),
-        ),
+        TextButton(onPressed: _saving ? null : _save, child: Text(loc.save)),
       ],
     );
   }

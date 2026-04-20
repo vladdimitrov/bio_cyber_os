@@ -8,9 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SupabaseSecureLocalStorage extends LocalStorage {
   SupabaseSecureLocalStorage();
 
-  static const FlutterSecureStorage _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
   @override
   Future<String?> accessToken() => _storage.read(key: supabasePersistSessionKey);

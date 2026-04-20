@@ -1,15 +1,498 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../../core/macro_display.dart';
 import '../../../core/supabase_error_message.dart';
 import '../../../core/models/ingredient.dart';
 import '../../../core/models/supplement.dart';
-import '../../../core/services/open_food_facts_service.dart';
+import '../../../core/services/global_barcode_lookup_service.dart';
+import '../../../core/services/protocol_keyword_scanner.dart';
+import '../../../core/widgets/bio_cyber_search_bar.dart';
 import '../../../core/widgets/diet_indicator_badges.dart';
 import '../../food/screens/barcode_scanner_screen.dart';
+
+List<Map<String, dynamic>> _filterLibraryRowsByName(
+  List<Map<String, dynamic>> rows,
+  String query,
+) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return List<Map<String, dynamic>>.from(rows);
+  return rows
+      .where((r) => (r['name'] ?? '').toString().toLowerCase().contains(q))
+      .toList(growable: false);
+}
+
+/// Name substring or barcode / GTIN match (normalized lowercase).
+List<Map<String, dynamic>> _filterRowsByNameAndBarcode(
+  List<Map<String, dynamic>> rows,
+  String query,
+) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return List<Map<String, dynamic>>.from(rows);
+  return rows.where((r) {
+    final name = (r['name'] ?? '').toString().toLowerCase();
+    final bc = (r['barcode'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'\s'), '');
+    final qq = q.replaceAll(RegExp(r'\s'), '');
+    if (qq.isEmpty) return true;
+    return name.contains(q) || bc.contains(qq) || bc == qq;
+  }).toList(growable: false);
+}
+
+List<Map<String, dynamic>> _filterIngredientRows(
+  List<Map<String, dynamic>> rows,
+  String query,
+) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return List<Map<String, dynamic>>.from(rows);
+  return rows.where((r) {
+    final name = (r['name'] ?? '').toString().toLowerCase();
+    final bc = (r['barcode'] ?? '').toString().toLowerCase();
+    return name.contains(q) || bc.contains(q);
+  }).toList(growable: false);
+}
+
+List<Map<String, dynamic>> _filterSupplementRows(
+  List<Map<String, dynamic>> rows,
+  String query,
+) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return List<Map<String, dynamic>>.from(rows);
+  return rows.where((r) {
+    final name = (r['name'] ?? '').toString().toLowerCase();
+    final dosage = (r['daily_dosage'] ?? '').toString().toLowerCase();
+    final unit = (r['unit_type'] ?? '').toString().toLowerCase();
+    final time = (r['scheduled_time'] ?? '').toString().toLowerCase();
+    final bc = (r['barcode'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'\s'), '');
+    final qq = q.replaceAll(RegExp(r'\s'), '');
+    return name.contains(q) ||
+        dosage.contains(q) ||
+        unit.contains(q) ||
+        time.contains(q) ||
+        (qq.isNotEmpty && (bc.contains(qq) || bc == qq));
+  }).toList(growable: false);
+}
+
+enum LibraryBarcodeScanTab { ingredients, supplements, medications }
+
+GlobalBarcodeLibraryTab _mapLibraryTabToGlobal(LibraryBarcodeScanTab tab) {
+  switch (tab) {
+    case LibraryBarcodeScanTab.ingredients:
+      return GlobalBarcodeLibraryTab.ingredients;
+    case LibraryBarcodeScanTab.supplements:
+      return GlobalBarcodeLibraryTab.supplements;
+    case LibraryBarcodeScanTab.medications:
+      return GlobalBarcodeLibraryTab.medications;
+  }
+}
+
+/// Red keyword chips vs green “Safe for Protocol” when none of the terms appear.
+Widget _buildProtocolKeywordCompliance(ProtocolKeywordReport report) {
+  const gold = AppColors.cyberGold;
+  if (report.anyDetected) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'PROTOCOL SCAN',
+          style: TextStyle(
+            color: gold,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w800,
+            fontSize: 11,
+            letterSpacing: 0.6,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: report.detectedLabels
+              .map(
+                (label) => Chip(
+                  label: Text(
+                    label.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  backgroundColor: Colors.red.shade800,
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              )
+              .toList(growable: false),
+        ),
+      ],
+    );
+  }
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    decoration: BoxDecoration(
+      border: Border.all(color: const Color(0xFF22C55E), width: 1),
+    ),
+    child: const Row(
+      children: [
+        Icon(Icons.verified_outlined, color: Color(0xFF22C55E), size: 20),
+        SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Safe for Protocol',
+            style: TextStyle(
+              color: Color(0xFF22C55E),
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<bool> _showExternalCatalogImportDialog(
+  BuildContext context, {
+  required GlobalCatalogProduct product,
+  required String barcode,
+}) async {
+  const bg = Color(0xFF050510);
+  const gold = AppColors.cyberGold;
+  const cyan = Color(0xFF00F3FF);
+
+  final scanText = [
+    product.ingredientsSearchText,
+    product.name,
+    if ((product.brand ?? '').trim().isNotEmpty) product.brand!,
+  ].join('\n');
+  final report = scanProtocolKeywords(scanText);
+  final preview = product.ingredientsSearchText.trim();
+  final previewShort = preview.length > 720 ? '${preview.substring(0, 720)}…' : preview;
+
+  final res = await showDialog<bool>(
+    context: context,
+    builder: (ctx) {
+      return AlertDialog(
+        backgroundColor: bg,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: const Text(
+          'EXTERNAL DATABASE HIT',
+          style: TextStyle(
+            color: gold,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w800,
+            fontSize: 14,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                product.sourceLabel.toUpperCase(),
+                style: const TextStyle(
+                  color: Color(0xFF88CCFF),
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                product.name,
+                style: const TextStyle(
+                  color: cyan,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  height: 1.3,
+                ),
+              ),
+              if ((product.brand ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Brand: ${product.brand}',
+                  style: const TextStyle(
+                    color: cyan,
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 6),
+              Text(
+                'Barcode: $barcode',
+                style: const TextStyle(
+                  color: Color(0xFF88CCFF),
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                ),
+              ),
+              if (previewShort.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'LABEL / INGREDIENTS (PREVIEW)',
+                  style: TextStyle(
+                    color: gold,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SelectableText(
+                  previewShort,
+                  style: const TextStyle(
+                    color: cyan,
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              _buildProtocolKeywordCompliance(report),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'CANCEL',
+              style: TextStyle(color: Color(0xFF88CCFF), fontFamily: 'monospace'),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'IMPORT TO MY LIBRARY',
+              style: TextStyle(
+                color: gold,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+  return res == true;
+}
+
+Future<void> _supabaseInsertPreferringOptionalBrandFields(
+  SupabaseClient client,
+  String table,
+  Map<String, dynamic> baseRow, {
+  required String brand,
+  required String ingredientsList,
+}) async {
+  final b = brand.trim();
+  final ing = ingredientsList.trim();
+  if (b.isEmpty && ing.isEmpty) {
+    await client.from(table).insert(baseRow);
+    return;
+  }
+  final extended = Map<String, dynamic>.from(baseRow);
+  if (b.isNotEmpty) extended['brand'] = b;
+  if (ing.isNotEmpty) extended['ingredients_list'] = ing;
+  try {
+    await client.from(table).insert(extended);
+  } catch (_) {
+    await client.from(table).insert(baseRow);
+  }
+}
+
+Future<void> _supabaseUpdatePreferringOptionalBrandFields(
+  SupabaseClient client,
+  String table,
+  Map<String, dynamic> payload,
+  Object id, {
+  required String brand,
+  required String ingredientsList,
+}) async {
+  final b = brand.trim();
+  final ing = ingredientsList.trim();
+  if (b.isEmpty && ing.isEmpty) {
+    await client.from(table).update(payload).eq('id', id);
+    return;
+  }
+  final extended = Map<String, dynamic>.from(payload);
+  if (b.isNotEmpty) extended['brand'] = b;
+  if (ing.isNotEmpty) extended['ingredients_list'] = ing;
+  try {
+    await client.from(table).update(extended).eq('id', id);
+  } catch (_) {
+    await client.from(table).update(payload).eq('id', id);
+  }
+}
+
+enum _BarcodeHitKind { ingredient, supplement, medication }
+
+class _BarcodeTableHit {
+  final _BarcodeHitKind kind;
+  final Map<String, dynamic> row;
+
+  const _BarcodeTableHit(this.kind, this.row);
+}
+
+Future<Map<String, dynamic>?> _selectFirstRowByBarcode(
+  SupabaseClient client,
+  String table,
+  String code,
+) async {
+  if (code.isEmpty) return null;
+  try {
+    final res = await client.from(table).select().eq('barcode', code).limit(1);
+    final list = res as List?;
+    if (list == null || list.isEmpty) return null;
+    return Map<String, dynamic>.from(list.first as Map);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<_BarcodeTableHit?> _lookupBarcodeInLibraryTables(
+  SupabaseClient client,
+  String code,
+) async {
+  final c = code.trim();
+  if (c.isEmpty) return null;
+  final ing = await _selectFirstRowByBarcode(client, 'ingredients', c);
+  if (ing != null) return _BarcodeTableHit(_BarcodeHitKind.ingredient, ing);
+  final sup = await _selectFirstRowByBarcode(client, 'supplements', c);
+  if (sup != null) return _BarcodeTableHit(_BarcodeHitKind.supplement, sup);
+  final med = await _selectFirstRowByBarcode(client, 'medications', c);
+  if (med != null) return _BarcodeTableHit(_BarcodeHitKind.medication, med);
+  return null;
+}
+
+Future<void> _runLibraryBarcodeScanFlow(
+  BuildContext context, {
+  required SupabaseClient client,
+  required LibraryBarcodeScanTab tab,
+  required void Function(bool busy) setLookupBusy,
+  required VoidCallback onReload,
+  required TextEditingController searchController,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+
+  final res = await BarcodeScannerScreen.pushForResult(
+    context,
+    pickCodeOnly: true,
+  );
+  if (!context.mounted || res == null) return;
+  final code = (res['barcode'] ?? '').toString().trim();
+  if (code.isEmpty) return;
+
+  searchController.text = code;
+  searchController.selection = TextSelection.collapsed(offset: code.length);
+  onReload();
+
+  setLookupBusy(true);
+  try {
+    final hit = await _lookupBarcodeInLibraryTables(client, code);
+    if (!context.mounted) return;
+
+    if (hit != null) {
+      switch (hit.kind) {
+        case _BarcodeHitKind.ingredient:
+          await showDialog<bool>(
+            context: context,
+            builder: (_) => _IngredientDialog(existing: hit.row),
+          );
+          break;
+        case _BarcodeHitKind.supplement:
+          await showDialog<bool>(
+            context: context,
+            builder: (_) => _SupplementDialog(existing: hit.row),
+          );
+          break;
+        case _BarcodeHitKind.medication:
+          await showDialog<bool>(
+            context: context,
+            builder: (_) => _MedicationDialog(existing: hit.row),
+          );
+          break;
+      }
+      if (!context.mounted) return;
+      onReload();
+      return;
+    }
+
+    final external = await GlobalBarcodeLookupService.lookupExternal(
+      code,
+      tab: _mapLibraryTabToGlobal(tab),
+    );
+    if (!context.mounted) return;
+
+    if (external != null) {
+      final import = await _showExternalCatalogImportDialog(
+        context,
+        product: external,
+        barcode: code,
+      );
+      if (!context.mounted) return;
+      if (import) {
+        final catalogMap = external.toCatalogMap();
+        switch (tab) {
+          case LibraryBarcodeScanTab.ingredients:
+            await showDialog<bool>(
+              context: context,
+              builder: (_) => _IngredientDialog(
+                prefilledBarcode: code,
+                catalogProduct: catalogMap,
+              ),
+            );
+            break;
+          case LibraryBarcodeScanTab.supplements:
+            await showDialog<bool>(
+              context: context,
+              builder: (_) => _SupplementDialog(
+                initialBarcode: code,
+                catalogProduct: catalogMap,
+              ),
+            );
+            break;
+          case LibraryBarcodeScanTab.medications:
+            await showDialog<bool>(
+              context: context,
+              builder: (_) => _MedicationDialog(
+                initialBarcode: code,
+                catalogProduct: catalogMap,
+              ),
+            );
+            break;
+        }
+        if (context.mounted) onReload();
+      }
+      return;
+    }
+
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Barcode not recognized. Please add this item manually.',
+        ),
+        duration: Duration(seconds: 4),
+      ),
+    );
+    if (context.mounted) onReload();
+  } finally {
+    if (context.mounted) setLookupBusy(false);
+  }
+}
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -141,6 +624,34 @@ class _MedsTabState extends State<_MedsTab> {
   final _client = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _future;
   List<Map<String, dynamic>> _rows = const [];
+  final _searchCtrl = TextEditingController();
+  bool _barcodeLookupBusy = false;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scanBarcodeToFilter() async {
+    await _runLibraryBarcodeScanFlow(
+      context,
+      client: _client,
+      tab: LibraryBarcodeScanTab.medications,
+      setLookupBusy: (b) {
+        if (mounted) setState(() => _barcodeLookupBusy = b);
+      },
+      onReload: () {
+        if (mounted) {
+          setState(() {
+            _future = _load();
+          });
+        }
+        widget.onChanged();
+      },
+      searchController: _searchCtrl,
+    );
+  }
 
   Widget _ownershipBadge(Object? userId) {
     const cyan = Color(0xFF00F3FF);
@@ -195,33 +706,44 @@ class _MedsTabState extends State<_MedsTab> {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snap) {
+        Widget body;
         if (!snap.hasData) {
           if (snap.hasError) {
-            return Padding(
+            body = Padding(
               padding: const EdgeInsets.all(16),
               child: SelectableText(
                 snap.error.toString(),
                 style: const TextStyle(color: cyan),
               ),
             );
+          } else {
+            body = const Center(child: CircularProgressIndicator());
           }
-          return const Center(child: CircularProgressIndicator());
-        }
-        final rows = List<Map<String, dynamic>>.from(snap.data!);
-        _rows = rows;
-        if (rows.isEmpty) {
-          return const Center(
-            child: Text(
-              'No meds',
-              style: TextStyle(color: cyan, fontFamily: 'monospace'),
-            ),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: rows.length,
-          itemBuilder: (context, index) {
-            final r = rows[index];
+        } else {
+          final rows = List<Map<String, dynamic>>.from(snap.data!);
+          _rows = rows;
+          final visible =
+              _filterRowsByNameAndBarcode(rows, _searchCtrl.text);
+          if (rows.isEmpty) {
+            body = const Center(
+              child: Text(
+                'No meds',
+                style: TextStyle(color: cyan, fontFamily: 'monospace'),
+              ),
+            );
+          } else if (visible.isEmpty) {
+            body = const Center(
+              child: Text(
+                'NO MATCHES',
+                style: TextStyle(color: cyan, fontFamily: 'monospace'),
+              ),
+            );
+          } else {
+            body = ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: visible.length,
+              itemBuilder: (context, index) {
+            final r = visible[index];
             final id = (r['id'] ?? '').toString();
             final name = (r['name'] ?? '').toString();
             final uid = _client.auth.currentUser?.id;
@@ -322,7 +844,30 @@ class _MedsTabState extends State<_MedsTab> {
                 ],
               ),
             );
-          },
+              },
+            );
+          }
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: BioCyberSearchBar(
+                controller: _searchCtrl,
+                hintText: 'SEARCH MEDS…',
+                onChanged: (_) => setState(() {}),
+                isLookupBusy: _barcodeLookupBusy,
+                suffix: IconButton(
+                  tooltip: 'Scan barcode / GTIN',
+                  icon: const Icon(Icons.document_scanner_outlined),
+                  color: AppColors.cyberGold,
+                  onPressed: _barcodeLookupBusy ? null : _scanBarcodeToFilter,
+                ),
+              ),
+            ),
+            Expanded(child: body),
+          ],
         );
       },
     );
@@ -391,6 +936,34 @@ class _IngredientsTab extends StatefulWidget {
 class _IngredientsTabState extends State<_IngredientsTab> {
   final _client = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _future;
+  final _searchCtrl = TextEditingController();
+  bool _barcodeLookupBusy = false;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scanBarcodeToFilter() async {
+    await _runLibraryBarcodeScanFlow(
+      context,
+      client: _client,
+      tab: LibraryBarcodeScanTab.ingredients,
+      setLookupBusy: (b) {
+        if (mounted) setState(() => _barcodeLookupBusy = b);
+      },
+      onReload: () {
+        if (mounted) {
+          setState(() {
+            _future = _load();
+          });
+        }
+        widget.onChanged();
+      },
+      searchController: _searchCtrl,
+    );
+  }
 
   Widget _ownershipBadge(Object? userId) {
     const cyan = Color(0xFF00F3FF);
@@ -424,7 +997,7 @@ class _IngredientsTabState extends State<_IngredientsTab> {
         .from('ingredients')
         .select(
           'id,name,calories_per_100g,protein_per_100g,carbs_per_100g,fat_per_100g,'
-          'is_gluten_free,glycemic_index,allergen_level,user_id',
+          'is_gluten_free,glycemic_index,allergen_level,user_id,barcode',
         )
         .order('name');
     return (data as List).cast<Map<String, dynamic>>();
@@ -446,32 +1019,43 @@ class _IngredientsTabState extends State<_IngredientsTab> {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snap) {
+        Widget body;
         if (!snap.hasData) {
           if (snap.hasError) {
-            return Padding(
+            body = Padding(
               padding: const EdgeInsets.all(16),
               child: SelectableText(
                 snap.error.toString(),
                 style: const TextStyle(color: cyan),
               ),
             );
+          } else {
+            body = const Center(child: CircularProgressIndicator());
           }
-          return const Center(child: CircularProgressIndicator());
-        }
-        final rows = List<Map<String, dynamic>>.from(snap.data!);
-        if (rows.isEmpty) {
-          return const Center(
-            child: Text(
-              'No ingredients',
-              style: TextStyle(color: cyan, fontFamily: 'monospace'),
-            ),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: rows.length,
-          itemBuilder: (context, index) {
-            final r = rows[index];
+        } else {
+          final rows = List<Map<String, dynamic>>.from(snap.data!);
+          final visible =
+              _filterIngredientRows(rows, _searchCtrl.text);
+          if (rows.isEmpty) {
+            body = const Center(
+              child: Text(
+                'No ingredients',
+                style: TextStyle(color: cyan, fontFamily: 'monospace'),
+              ),
+            );
+          } else if (visible.isEmpty) {
+            body = const Center(
+              child: Text(
+                'NO MATCHES',
+                style: TextStyle(color: cyan, fontFamily: 'monospace'),
+              ),
+            );
+          } else {
+            body = ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: visible.length,
+              itemBuilder: (context, index) {
+            final r = visible[index];
             final id = (r['id'] ?? '').toString();
             final name = (r['name'] ?? '').toString();
             final ingRow = Ingredient.fromJson(Map<String, dynamic>.from(r));
@@ -572,7 +1156,30 @@ class _IngredientsTabState extends State<_IngredientsTab> {
                 ],
               ),
             );
-          },
+              },
+            );
+          }
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: BioCyberSearchBar(
+                controller: _searchCtrl,
+                hintText: 'SEARCH INGREDIENTS…',
+                onChanged: (_) => setState(() {}),
+                isLookupBusy: _barcodeLookupBusy,
+                suffix: IconButton(
+                  tooltip: 'Scan barcode / GTIN',
+                  icon: const Icon(Icons.document_scanner_outlined),
+                  color: AppColors.cyberGold,
+                  onPressed: _barcodeLookupBusy ? null : _scanBarcodeToFilter,
+                ),
+              ),
+            ),
+            Expanded(child: body),
+          ],
         );
       },
     );
@@ -592,6 +1199,13 @@ class _RecipesTabState extends State<_RecipesTab> {
   final _client = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _future;
   List<Map<String, dynamic>> _rows = const [];
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   Widget _ownershipBadge(Object? userId) {
     const cyan = Color(0xFF00F3FF);
@@ -646,33 +1260,44 @@ class _RecipesTabState extends State<_RecipesTab> {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snap) {
+        Widget body;
         if (!snap.hasData) {
           if (snap.hasError) {
-            return Padding(
+            body = Padding(
               padding: const EdgeInsets.all(16),
               child: SelectableText(
                 snap.error.toString(),
                 style: const TextStyle(color: cyan),
               ),
             );
+          } else {
+            body = const Center(child: CircularProgressIndicator());
           }
-          return const Center(child: CircularProgressIndicator());
-        }
-        final rows = List<Map<String, dynamic>>.from(snap.data!);
-        _rows = rows;
-        if (rows.isEmpty) {
-          return const Center(
-            child: Text(
-              'No recipes',
-              style: TextStyle(color: cyan, fontFamily: 'monospace'),
-            ),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: rows.length,
-          itemBuilder: (context, index) {
-            final r = rows[index];
+        } else {
+          final rows = List<Map<String, dynamic>>.from(snap.data!);
+          _rows = rows;
+          final visible =
+              _filterLibraryRowsByName(rows, _searchCtrl.text);
+          if (rows.isEmpty) {
+            body = const Center(
+              child: Text(
+                'No recipes',
+                style: TextStyle(color: cyan, fontFamily: 'monospace'),
+              ),
+            );
+          } else if (visible.isEmpty) {
+            body = const Center(
+              child: Text(
+                'NO MATCHES',
+                style: TextStyle(color: cyan, fontFamily: 'monospace'),
+              ),
+            );
+          } else {
+            body = ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: visible.length,
+              itemBuilder: (context, index) {
+            final r = visible[index];
             final id = (r['id'] ?? '').toString();
             final name = (r['name'] ?? '').toString();
             final uid = _client.auth.currentUser?.id;
@@ -798,7 +1423,23 @@ class _RecipesTabState extends State<_RecipesTab> {
                 ],
               ),
             );
-          },
+              },
+            );
+          }
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: BioCyberSearchBar(
+                controller: _searchCtrl,
+                hintText: 'SEARCH RECIPES…',
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            Expanded(child: body),
+          ],
         );
       },
     );
@@ -818,6 +1459,30 @@ class _SupplementsTabState extends State<_SupplementsTab> {
   final _client = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _future;
   List<Map<String, dynamic>> _rows = const [];
+  final _searchCtrl = TextEditingController();
+  bool _barcodeLookupBusy = false;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scanBarcodeToFilter() async {
+    await _runLibraryBarcodeScanFlow(
+      context,
+      client: _client,
+      tab: LibraryBarcodeScanTab.supplements,
+      setLookupBusy: (b) {
+        if (mounted) setState(() => _barcodeLookupBusy = b);
+      },
+      onReload: () {
+        unawaited(_refresh());
+        widget.onChanged();
+      },
+      searchController: _searchCtrl,
+    );
+  }
 
   Widget _ownershipBadge(Object? userId) {
     const cyan = Color(0xFF00F3FF);
@@ -873,33 +1538,44 @@ class _SupplementsTabState extends State<_SupplementsTab> {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snap) {
+        Widget body;
         if (!snap.hasData) {
           if (snap.hasError) {
-            return Padding(
+            body = Padding(
               padding: const EdgeInsets.all(16),
               child: SelectableText(
                 snap.error.toString(),
                 style: const TextStyle(color: cyan),
               ),
             );
+          } else {
+            body = const Center(child: CircularProgressIndicator());
           }
-          return const Center(child: CircularProgressIndicator());
-        }
-        final rows = List<Map<String, dynamic>>.from(snap.data!);
-        _rows = rows;
-        if (rows.isEmpty) {
-          return const Center(
-            child: Text(
-              'No supplements',
-              style: TextStyle(color: cyan, fontFamily: 'monospace'),
-            ),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: rows.length,
-          itemBuilder: (context, index) {
-            final r = rows[index];
+        } else {
+          final rows = List<Map<String, dynamic>>.from(snap.data!);
+          _rows = rows;
+          final visible =
+              _filterSupplementRows(rows, _searchCtrl.text);
+          if (rows.isEmpty) {
+            body = const Center(
+              child: Text(
+                'No supplements',
+                style: TextStyle(color: cyan, fontFamily: 'monospace'),
+              ),
+            );
+          } else if (visible.isEmpty) {
+            body = const Center(
+              child: Text(
+                'NO MATCHES',
+                style: TextStyle(color: cyan, fontFamily: 'monospace'),
+              ),
+            );
+          } else {
+            body = ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: visible.length,
+              itemBuilder: (context, index) {
+            final r = visible[index];
             final id = (r['id'] ?? '').toString();
             final name = (r['name'] ?? '').toString();
             final dosage = (r['daily_dosage'] ?? '').toString();
@@ -1032,7 +1708,30 @@ class _SupplementsTabState extends State<_SupplementsTab> {
                 ],
               ),
             );
-          },
+              },
+            );
+          }
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: BioCyberSearchBar(
+                controller: _searchCtrl,
+                hintText: 'SEARCH SUPPLEMENTS…',
+                onChanged: (_) => setState(() {}),
+                isLookupBusy: _barcodeLookupBusy,
+                suffix: IconButton(
+                  tooltip: 'Scan barcode / GTIN',
+                  icon: const Icon(Icons.document_scanner_outlined),
+                  color: AppColors.cyberGold,
+                  onPressed: _barcodeLookupBusy ? null : _scanBarcodeToFilter,
+                ),
+              ),
+            ),
+            Expanded(child: body),
+          ],
         );
       },
     );
@@ -1041,8 +1740,15 @@ class _SupplementsTabState extends State<_SupplementsTab> {
 
 class _IngredientDialog extends StatefulWidget {
   final Map<String, dynamic>? existing;
+  final String? prefilledBarcode;
+  /// Open Food Facts, OpenFDA, or NIH DSLD payload from [GlobalCatalogProduct.toCatalogMap].
+  final Map<String, dynamic>? catalogProduct;
 
-  const _IngredientDialog({this.existing});
+  const _IngredientDialog({
+    this.existing,
+    this.prefilledBarcode,
+    this.catalogProduct,
+  });
 
   @override
   State<_IngredientDialog> createState() => _IngredientDialogState();
@@ -1058,27 +1764,71 @@ class _IngredientDialogState extends State<_IngredientDialog> {
   late final TextEditingController _c;
   late final TextEditingController _f;
   late final TextEditingController _gi;
+  late final TextEditingController _brand;
+  late final TextEditingController _ingredientsLabel;
 
   bool _glutenFree = false;
   int _allergenLevel = 1;
 
   bool _saving = false;
 
+  bool get _showBrandAndLabelFields =>
+      widget.catalogProduct != null || widget.existing != null;
+
+  static String _fmtOffNum(dynamic v) {
+    if (v == null) return '';
+    if (v is num) {
+      final d = v.toDouble();
+      return d == d.roundToDouble() ? '${d.toInt()}' : '$d';
+    }
+    return v.toString();
+  }
+
   @override
   void initState() {
     super.initState();
     final e = widget.existing;
-    _name = TextEditingController(text: (e?['name'] ?? '').toString());
-    _cal = TextEditingController(text: (e?['calories_per_100g'] ?? '').toString());
-    _p = TextEditingController(text: (e?['protein_per_100g'] ?? '').toString());
-    _c = TextEditingController(text: (e?['carbs_per_100g'] ?? '').toString());
-    _f = TextEditingController(text: (e?['fat_per_100g'] ?? '').toString());
-    _gi = TextEditingController(text: (e?['glycemic_index'] ?? '').toString());
+    final cat = widget.catalogProduct;
+
     if (e != null) {
+      _name = TextEditingController(text: (e['name'] ?? '').toString());
+      _cal = TextEditingController(
+        text: (e['calories_per_100g'] ?? '').toString(),
+      );
+      _p = TextEditingController(text: (e['protein_per_100g'] ?? '').toString());
+      _c = TextEditingController(text: (e['carbs_per_100g'] ?? '').toString());
+      _f = TextEditingController(text: (e['fat_per_100g'] ?? '').toString());
+      _gi = TextEditingController(text: (e['glycemic_index'] ?? '').toString());
       final ing = Ingredient.fromJson(Map<String, dynamic>.from(e));
       _glutenFree = ing.isGlutenFree;
       _allergenLevel = ing.allergenLevel;
       _gi.text = (ing.glycemicIndex ?? '').toString();
+      _brand = TextEditingController(text: (e['brand'] ?? '').toString());
+      _ingredientsLabel =
+          TextEditingController(text: (e['ingredients_list'] ?? '').toString());
+    } else if (cat != null) {
+      _name = TextEditingController(text: (cat['name'] ?? '').toString());
+      _cal = TextEditingController(text: _fmtOffNum(cat['calories']));
+      _p = TextEditingController(text: _fmtOffNum(cat['proteins']));
+      _c = TextEditingController(text: _fmtOffNum(cat['carbs']));
+      _f = TextEditingController(text: _fmtOffNum(cat['fats']));
+      _gi = TextEditingController();
+      _glutenFree = false;
+      _allergenLevel = 1;
+      _brand = TextEditingController(text: (cat['brand'] ?? '').toString());
+      _ingredientsLabel =
+          TextEditingController(text: (cat['ingredients_text'] ?? '').toString());
+    } else {
+      _name = TextEditingController();
+      _cal = TextEditingController();
+      _p = TextEditingController();
+      _c = TextEditingController();
+      _f = TextEditingController();
+      _gi = TextEditingController();
+      _glutenFree = false;
+      _allergenLevel = 1;
+      _brand = TextEditingController();
+      _ingredientsLabel = TextEditingController();
     }
   }
 
@@ -1090,6 +1840,8 @@ class _IngredientDialogState extends State<_IngredientDialog> {
     _c.dispose();
     _f.dispose();
     _gi.dispose();
+    _brand.dispose();
+    _ingredientsLabel.dispose();
     super.dispose();
   }
 
@@ -1122,12 +1874,28 @@ class _IngredientDialogState extends State<_IngredientDialog> {
       final id = widget.existing?['id'];
       if (id == null || id.toString().isEmpty) {
         final uid = _client.auth.currentUser?.id;
-        await _client.from('ingredients').insert({
+        final bc = (widget.prefilledBarcode ?? '').trim();
+        final base = {
           ...payload,
           'user_id': uid,
-        });
+          if (bc.isNotEmpty) 'barcode': bc,
+        };
+        await _supabaseInsertPreferringOptionalBrandFields(
+          _client,
+          'ingredients',
+          base,
+          brand: _brand.text,
+          ingredientsList: _ingredientsLabel.text,
+        );
       } else {
-        await _client.from('ingredients').update(payload).eq('id', id);
+        await _supabaseUpdatePreferringOptionalBrandFields(
+          _client,
+          'ingredients',
+          payload,
+          id,
+          brand: _brand.text,
+          ingredientsList: _ingredientsLabel.text,
+        );
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -1160,6 +1928,27 @@ class _IngredientDialogState extends State<_IngredientDialog> {
                 decoration: const InputDecoration(labelText: 'Name'),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
+              if (_showBrandAndLabelFields) ...[
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _brand,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                    labelText: 'Brand (optional)',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _ingredientsLabel,
+                  minLines: 2,
+                  maxLines: 6,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  decoration: const InputDecoration(
+                    labelText: 'Ingredients / label text',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               TextFormField(
                 controller: _cal,
@@ -1248,8 +2037,14 @@ class _IngredientDialogState extends State<_IngredientDialog> {
 
 class _SupplementDialog extends StatefulWidget {
   final Map<String, dynamic>? existing;
+  final String? initialBarcode;
+  final Map<String, dynamic>? catalogProduct;
 
-  const _SupplementDialog({this.existing});
+  const _SupplementDialog({
+    this.existing,
+    this.initialBarcode,
+    this.catalogProduct,
+  });
 
   @override
   State<_SupplementDialog> createState() => _SupplementDialogState();
@@ -1261,6 +2056,8 @@ class _SupplementDialogState extends State<_SupplementDialog> {
 
   late final TextEditingController _name;
   late final TextEditingController _dosage;
+  late final TextEditingController _brand;
+  late final TextEditingController _ingredientsLabel;
   String? _barcode;
   String _unit = 'drops';
   static const List<String> allowedUnits = ['g', 'mg', 'ml', 'drops', 'capsules'];
@@ -1272,15 +2069,34 @@ class _SupplementDialogState extends State<_SupplementDialog> {
   bool _saving = false;
   bool _barcodeBusy = false;
 
+  bool get _showBrandAndLabelFields =>
+      widget.catalogProduct != null || widget.existing != null;
+
   @override
   void initState() {
     super.initState();
     final e = widget.existing;
+    final cat = widget.catalogProduct;
     _name = TextEditingController(text: (e?['name'] ?? '').toString());
+    if (e == null && cat != null && (cat['name'] ?? '').toString().trim().isNotEmpty) {
+      _name.text = (cat['name'] ?? '').toString().trim();
+    }
     _dosage = TextEditingController(text: (e?['daily_dosage'] ?? '').toString());
+    if (e == null && (widget.catalogProduct != null) && _dosage.text.trim().isEmpty) {
+      _dosage.text = '1';
+    }
+    _brand = TextEditingController(
+      text: (e?['brand'] ?? cat?['brand'] ?? '').toString(),
+    );
+    _ingredientsLabel = TextEditingController(
+      text: (e?['ingredients_list'] ?? cat?['ingredients_text'] ?? '').toString(),
+    );
     _barcode = (e?['barcode'] ?? '').toString().trim().isEmpty
         ? null
         : (e?['barcode'] ?? '').toString().trim();
+    if (e == null && (widget.initialBarcode ?? '').trim().isNotEmpty) {
+      _barcode = widget.initialBarcode!.trim();
+    }
 
     // Sanitize legacy DB values to prevent DropdownButton value crashes.
     String dbUnit = e?['unit_type']?.toString() ?? 'g';
@@ -1304,6 +2120,8 @@ class _SupplementDialogState extends State<_SupplementDialog> {
   void dispose() {
     _name.dispose();
     _dosage.dispose();
+    _brand.dispose();
+    _ingredientsLabel.dispose();
     super.dispose();
   }
 
@@ -1311,23 +2129,26 @@ class _SupplementDialogState extends State<_SupplementDialog> {
 
   Future<void> _scanBarcodeAndFill() async {
     if (_barcodeBusy || _saving) return;
-    final res = await Navigator.of(context).push<Map<String, dynamic>?>(
-      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-    );
+    final res = await BarcodeScannerScreen.pushForResult(context);
     if (res == null || !mounted) return;
     final code = (res['barcode'] ?? '').toString().trim();
     if (code.isEmpty) return;
 
     setState(() => _barcodeBusy = true);
     try {
-      final off = await OpenFoodFactsService.fetchByBarcode(code);
+      final hit = await GlobalBarcodeLookupService.lookupExternal(
+        code,
+        tab: GlobalBarcodeLibraryTab.supplements,
+      );
       if (!mounted) return;
       _barcode = code;
-      if (off != null) {
-        final name = (off['name'] ?? '').toString().trim();
+      if (hit != null) {
+        final name = hit.name.trim();
         if (name.isNotEmpty) _name.text = name;
+        _brand.text = (hit.brand ?? '').trim();
+        _ingredientsLabel.text = hit.ingredientsSearchText.trim();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Auto-filled from barcode.')),
+          const SnackBar(content: Text('Auto-filled from global databases.')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1348,16 +2169,24 @@ class _SupplementDialogState extends State<_SupplementDialog> {
     try {
       final id = widget.existing?['id'];
       if (id != null && id.toString().isNotEmpty) {
-        await _client.from('supplements').update({
+        final payload = {
           'name': _name.text.trim(),
           if ((_barcode ?? '').trim().isNotEmpty) 'barcode': _barcode,
           'is_gluten_free': _glutenFree,
           'low_glycemic_index': _lowGlycemicIndex,
           'allergen_level': _allergenLevel,
-        }).eq('id', widget.existing!['id']);
+        };
+        await _supabaseUpdatePreferringOptionalBrandFields(
+          _client,
+          'supplements',
+          payload,
+          widget.existing!['id'],
+          brand: _brand.text,
+          ingredientsList: _ingredientsLabel.text,
+        );
       } else {
         final uid = _client.auth.currentUser?.id;
-        await _client.from('supplements').insert({
+        final base = {
           'name': _name.text.trim(),
           'daily_dosage': _d(_dosage.text),
           'unit_type': _unit,
@@ -1367,7 +2196,14 @@ class _SupplementDialogState extends State<_SupplementDialog> {
           'allergen_level': _allergenLevel,
           'is_active': false,
           'user_id': uid,
-        });
+        };
+        await _supabaseInsertPreferringOptionalBrandFields(
+          _client,
+          'supplements',
+          base,
+          brand: _brand.text,
+          ingredientsList: _ingredientsLabel.text,
+        );
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -1383,7 +2219,7 @@ class _SupplementDialogState extends State<_SupplementDialog> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
+    const gold = AppColors.cyberGold;
     final title = widget.existing == null ? 'ADD SUPPLEMENT' : 'EDIT SUPPLEMENT';
     return AlertDialog(
       backgroundColor: bg,
@@ -1409,6 +2245,27 @@ class _SupplementDialogState extends State<_SupplementDialog> {
                 ),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
+              if (_showBrandAndLabelFields) ...[
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _brand,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                    labelText: 'Brand (optional)',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _ingredientsLabel,
+                  minLines: 2,
+                  maxLines: 6,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  decoration: const InputDecoration(
+                    labelText: 'Ingredients / label text',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ],
               if ((_barcode ?? '').trim().isNotEmpty) ...[
                 const SizedBox(height: 10),
                 TextFormField(
@@ -1499,8 +2356,14 @@ class _SupplementDialogState extends State<_SupplementDialog> {
 
 class _MedicationDialog extends StatefulWidget {
   final Map<String, dynamic>? existing;
+  final String? initialBarcode;
+  final Map<String, dynamic>? catalogProduct;
 
-  const _MedicationDialog({this.existing});
+  const _MedicationDialog({
+    this.existing,
+    this.initialBarcode,
+    this.catalogProduct,
+  });
 
   @override
   State<_MedicationDialog> createState() => _MedicationDialogState();
@@ -1510,44 +2373,68 @@ class _MedicationDialogState extends State<_MedicationDialog> {
   final _client = Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
+  late final TextEditingController _brand;
+  late final TextEditingController _ingredientsLabel;
   String? _barcode;
   bool _saving = false;
   bool _barcodeBusy = false;
 
+  bool get _showBrandAndLabelFields =>
+      widget.catalogProduct != null || widget.existing != null;
+
   @override
   void initState() {
     super.initState();
-    _name = TextEditingController(text: (widget.existing?['name'] ?? '').toString());
-    _barcode = (widget.existing?['barcode'] ?? '').toString().trim().isEmpty
+    final e = widget.existing;
+    final cat = widget.catalogProduct;
+    _name = TextEditingController(text: (e?['name'] ?? '').toString());
+    if (e == null && cat != null && (cat['name'] ?? '').toString().trim().isNotEmpty) {
+      _name.text = (cat['name'] ?? '').toString().trim();
+    }
+    _brand = TextEditingController(
+      text: (e?['brand'] ?? cat?['brand'] ?? '').toString(),
+    );
+    _ingredientsLabel = TextEditingController(
+      text: (e?['ingredients_list'] ?? cat?['ingredients_text'] ?? '').toString(),
+    );
+    _barcode = (e?['barcode'] ?? '').toString().trim().isEmpty
         ? null
-        : (widget.existing?['barcode'] ?? '').toString().trim();
+        : (e?['barcode'] ?? '').toString().trim();
+    if (e == null && (widget.initialBarcode ?? '').trim().isNotEmpty) {
+      _barcode = widget.initialBarcode!.trim();
+    }
   }
 
   @override
   void dispose() {
     _name.dispose();
+    _brand.dispose();
+    _ingredientsLabel.dispose();
     super.dispose();
   }
 
   Future<void> _scanBarcodeAndFill() async {
     if (_barcodeBusy || _saving) return;
-    final res = await Navigator.of(context).push<Map<String, dynamic>?>(
-      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-    );
+    final res = await BarcodeScannerScreen.pushForResult(context);
     if (res == null || !mounted) return;
     final code = (res['barcode'] ?? '').toString().trim();
     if (code.isEmpty) return;
 
     setState(() => _barcodeBusy = true);
     try {
-      final off = await OpenFoodFactsService.fetchByBarcode(code);
+      final hit = await GlobalBarcodeLookupService.lookupExternal(
+        code,
+        tab: GlobalBarcodeLibraryTab.medications,
+      );
       if (!mounted) return;
       _barcode = code;
-      if (off != null) {
-        final name = (off['name'] ?? '').toString().trim();
+      if (hit != null) {
+        final name = hit.name.trim();
         if (name.isNotEmpty) _name.text = name;
+        _brand.text = (hit.brand ?? '').trim();
+        _ingredientsLabel.text = hit.ingredientsSearchText.trim();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Auto-filled from barcode.')),
+          const SnackBar(content: Text('Auto-filled from global databases.')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1568,17 +2455,32 @@ class _MedicationDialogState extends State<_MedicationDialog> {
     try {
       final id = widget.existing?['id'];
       if (id != null && id.toString().isNotEmpty) {
-        await _client.from('medications').update({
+        final payload = {
           'name': _name.text.trim(),
           if ((_barcode ?? '').trim().isNotEmpty) 'barcode': _barcode,
-        }).eq('id', id);
+        };
+        await _supabaseUpdatePreferringOptionalBrandFields(
+          _client,
+          'medications',
+          payload,
+          id,
+          brand: _brand.text,
+          ingredientsList: _ingredientsLabel.text,
+        );
       } else {
         final uid = _client.auth.currentUser?.id;
-        await _client.from('medications').insert({
+        final base = {
           'name': _name.text.trim(),
           if ((_barcode ?? '').trim().isNotEmpty) 'barcode': _barcode,
           'user_id': uid,
-        });
+        };
+        await _supabaseInsertPreferringOptionalBrandFields(
+          _client,
+          'medications',
+          base,
+          brand: _brand.text,
+          ingredientsList: _ingredientsLabel.text,
+        );
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -1594,7 +2496,7 @@ class _MedicationDialogState extends State<_MedicationDialog> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
-    const gold = Color(0xFFCBAB67);
+    const gold = AppColors.cyberGold;
     final title = widget.existing == null ? 'ADD MED' : 'EDIT MED';
     return AlertDialog(
       backgroundColor: bg,
@@ -1620,6 +2522,27 @@ class _MedicationDialogState extends State<_MedicationDialog> {
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Required' : null,
             ),
+            if (_showBrandAndLabelFields) ...[
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _brand,
+                style: const TextStyle(fontFamily: 'monospace'),
+                decoration: const InputDecoration(
+                  labelText: 'Brand (optional)',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _ingredientsLabel,
+                minLines: 2,
+                maxLines: 6,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                decoration: const InputDecoration(
+                  labelText: 'Ingredients / label text',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
             if ((_barcode ?? '').trim().isNotEmpty) ...[
               const SizedBox(height: 10),
               TextFormField(
