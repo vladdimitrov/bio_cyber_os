@@ -7,6 +7,7 @@ import 'package:bio_cyber_os/l10n/context_l10n.dart';
 import 'package:bio_cyber_os/l10n/meal_labels.dart';
 
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/notifications/vitality_notification_copy.dart';
 import '../../../core/supabase_error_message.dart';
 import '../../../core/supabase_log_date.dart';
 import '../../../core/widgets/library_search_sheet.dart';
@@ -384,10 +385,8 @@ class _SupplementsScreenState extends State<SupplementsScreen>
 
       if (!mounted) return;
       final l10n = context.l10n;
-      final reminderTitle = l10n.notificationReminderSuppIntake(
-        name.isEmpty ? l10n.defaultSupplementName : name,
-      );
-      final reminderBody = l10n.reminderBody;
+      final itemLabel =
+          name.isEmpty ? l10n.defaultSupplementName : name;
 
       final insertedList = (inserted as List).cast<Map<String, dynamic>>();
       for (var i = 0; i < insertedList.length; i++) {
@@ -399,8 +398,15 @@ class _SupplementsScreenState extends State<SupplementsScreen>
         if (rLocal != null && newId.isNotEmpty && schedLocal != null) {
           await NotificationService.scheduleByKey(
             key: 'daily_logs:$newId',
-            title: reminderTitle,
-            body: reminderBody,
+            title: VitalityNotificationCopy.buildTitle(
+              VitalityCalendarCategory.supplements,
+            ),
+            body: VitalityNotificationCopy.buildBody(
+              category: VitalityCalendarCategory.supplements,
+              itemName: itemLabel,
+              amount: picked.amount,
+              unit: picked.unit,
+            ),
             whenLocal: rLocal,
             payload: {
               'item_type': 'supplement',
@@ -408,6 +414,10 @@ class _SupplementsScreenState extends State<SupplementsScreen>
               'target_date':
                   '${schedLocal.year.toString().padLeft(4, '0')}-${schedLocal.month.toString().padLeft(2, '0')}-${schedLocal.day.toString().padLeft(2, '0')}',
             },
+            alarmItemName: itemLabel,
+            alarmAmount:
+                VitalityNotificationCopy.formatAmountForDisplay(picked.amount),
+            alarmUnit: picked.unit,
           );
         }
       }
@@ -1668,10 +1678,6 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
         return;
       }
       final loc = context.l10n;
-      final reminderTitle = loc.notificationReminderSuppIntake(
-        widget.supplementName,
-      );
-      final reminderDefaultBody = loc.reminderBody;
       final logUpdatedMsg = loc.msgLogUpdated;
       await _client
           .from('daily_logs')
@@ -1698,10 +1704,15 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
       if (reminderLocal != null) {
         await NotificationService.scheduleByKey(
           key: 'daily_logs:${widget.logId}',
-          title: reminderTitle,
-          body: _noteController.text.trim().isEmpty
-              ? reminderDefaultBody
-              : _noteController.text.trim(),
+          title: VitalityNotificationCopy.buildTitle(
+            VitalityCalendarCategory.supplements,
+          ),
+          body: VitalityNotificationCopy.buildBody(
+            category: VitalityCalendarCategory.supplements,
+            itemName: widget.supplementName,
+            amount: amt,
+            unit: _unit,
+          ),
           whenLocal: reminderLocal,
           payload: {
             'item_type': 'supplement',
@@ -1709,6 +1720,9 @@ class _EditSuppLogDialogState extends State<_EditSuppLogDialog> {
             'target_date':
                 '${_consumedAtLocal.year.toString().padLeft(4, '0')}-${_consumedAtLocal.month.toString().padLeft(2, '0')}-${_consumedAtLocal.day.toString().padLeft(2, '0')}',
           },
+          alarmItemName: widget.supplementName,
+          alarmAmount: VitalityNotificationCopy.formatAmountForDisplay(amt),
+          alarmUnit: _unit,
         );
       }
 

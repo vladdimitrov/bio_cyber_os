@@ -8,6 +8,7 @@ import 'package:bio_cyber_os/l10n/meal_labels.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/notifications/vitality_notification_copy.dart';
 import '../../../core/supabase_error_message.dart';
 import '../../../core/supabase_log_date.dart';
 import '../../../core/widgets/library_search_sheet.dart';
@@ -491,10 +492,8 @@ class _MedicationsScreenState extends State<MedicationsScreen>
     if (picked == null) return;
     if (!mounted) return;
     final l10n = context.l10n;
-    final reminderNotificationTitle = l10n.reminderTimeToTake(
-      name.isEmpty ? l10n.defaultMedicationName : name,
-    );
-    final reminderNotificationBody = l10n.reminderBody;
+    final medLabel =
+        name.isEmpty ? l10n.defaultMedicationName : name;
 
     if (_client.auth.currentUser == null) {
       if (!mounted) return;
@@ -573,8 +572,15 @@ class _MedicationsScreenState extends State<MedicationsScreen>
         if (rLocal != null && newId.isNotEmpty && schedLocal != null) {
           await NotificationService.scheduleByKey(
             key: 'medication_logs:$newId',
-            title: reminderNotificationTitle,
-            body: reminderNotificationBody,
+            title: VitalityNotificationCopy.buildTitle(
+              VitalityCalendarCategory.medications,
+            ),
+            body: VitalityNotificationCopy.buildBody(
+              category: VitalityCalendarCategory.medications,
+              itemName: medLabel,
+              amount: picked.amount,
+              unit: picked.unit,
+            ),
             whenLocal: rLocal,
             payload: {
               'item_type': 'medication',
@@ -582,6 +588,10 @@ class _MedicationsScreenState extends State<MedicationsScreen>
               'target_date':
                   '${schedLocal.year.toString().padLeft(4, '0')}-${schedLocal.month.toString().padLeft(2, '0')}-${schedLocal.day.toString().padLeft(2, '0')}',
             },
+            alarmItemName: medLabel,
+            alarmAmount:
+                VitalityNotificationCopy.formatAmountForDisplay(picked.amount),
+            alarmUnit: picked.unit,
           );
         }
       }
@@ -1688,8 +1698,15 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
         if (!mounted) return;
         await NotificationService.scheduleByKey(
           key: 'medication_logs:${widget.logId}',
-          title: context.l10n.reminderTimeToTake(widget.medicationName),
-          body: context.l10n.reminderBody,
+          title: VitalityNotificationCopy.buildTitle(
+            VitalityCalendarCategory.medications,
+          ),
+          body: VitalityNotificationCopy.buildBody(
+            category: VitalityCalendarCategory.medications,
+            itemName: widget.medicationName,
+            amount: amt,
+            unit: _unit,
+          ),
           whenLocal: reminderLocal,
           payload: {
             'item_type': 'medication',
@@ -1697,6 +1714,9 @@ class _EditMedLogDialogState extends State<_EditMedLogDialog> {
             'target_date':
                 '${scheduledLocal.year.toString().padLeft(4, '0')}-${scheduledLocal.month.toString().padLeft(2, '0')}-${scheduledLocal.day.toString().padLeft(2, '0')}',
           },
+          alarmItemName: widget.medicationName,
+          alarmAmount: VitalityNotificationCopy.formatAmountForDisplay(amt),
+          alarmUnit: _unit,
         );
       }
 

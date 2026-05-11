@@ -9,6 +9,7 @@ import 'package:bio_cyber_os/l10n/context_l10n.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/notifications/vitality_notification_copy.dart';
 import '../../../core/services/open_food_facts_service.dart';
 import '../../../core/supabase_error_message.dart';
 import '../../../core/supabase_log_date.dart';
@@ -47,6 +48,9 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
 
   List<_IntakeEntry> _entries = const [];
   StreamSubscription<AuthState>? _sub;
+
+  /// When false, INTAKE ADHERENCE macro bars are hidden.
+  bool _isAdherenceExpanded = false;
 
   @override
   void initState() {
@@ -516,7 +520,7 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
+                      horizontal: 16,
                       vertical: 12,
                     ),
                     decoration: const BoxDecoration(
@@ -570,53 +574,115 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            'INTAKE ADHERENCE',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.0,
-                              color: cyan.withValues(alpha: 0.9),
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'INTAKE ADHERENCE',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.0,
+                                    color: cyan.withValues(alpha: 0.9),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => setState(() {
+                                  _isAdherenceExpanded = !_isAdherenceExpanded;
+                                }),
+                                visualDensity: VisualDensity.compact,
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(40, 40),
+                                  padding: const EdgeInsets.all(6),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 40,
+                                  minHeight: 40,
+                                  maxWidth: 44,
+                                  maxHeight: 44,
+                                ),
+                                iconSize: 22,
+                                icon: Icon(
+                                  _isAdherenceExpanded
+                                      ? Icons.visibility_off
+                                      : Icons.visibility,
+                                  size: 22,
+                                  color: _isAdherenceExpanded
+                                      ? AppColors.cyberGold
+                                          .withValues(alpha: 0.75)
+                                      : AppColors.cyberGold,
+                                ),
+                                tooltip: _isAdherenceExpanded
+                                    ? 'Hide adherence'
+                                    : 'Show adherence',
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 10),
-                          _IntakeDualMacroBar(
-                            label: 'ALL',
-                            consumed: all.taken.toDouble(),
-                            prognostic: all.total.toDouble(),
-                            target: (all.total > 0 ? all.total : 1).toDouble(),
-                            unit: '',
-                            decimals: 0,
-                          ),
-                          const SizedBox(height: 8),
-                          _IntakeDualMacroBar(
-                            label: 'SUPP',
-                            consumed: sup.taken.toDouble(),
-                            prognostic: sup.total.toDouble(),
-                            target: (sup.total > 0 ? sup.total : 1).toDouble(),
-                            unit: '',
-                            decimals: 0,
-                          ),
-                          const SizedBox(height: 8),
-                          _IntakeDualMacroBar(
-                            label: 'MED',
-                            consumed: med.taken.toDouble(),
-                            prognostic: med.total.toDouble(),
-                            target: (med.total > 0 ? med.total : 1).toDouble(),
-                            unit: '',
-                            decimals: 0,
-                          ),
-                          const SizedBox(height: 8),
-                          _IntakeDualMacroBar(
-                            label: 'OPEN',
-                            consumed: 0,
-                            prognostic: _entries
-                                .where((e) => !e.isTaken)
-                                .length
-                                .toDouble(),
-                            target: (all.total > 0 ? all.total : 1).toDouble(),
-                            unit: '',
-                            decimals: 0,
+                          // To drop adherence bars entirely, keep the header Row
+                          // above and set this AnimatedSize child to const SizedBox.shrink().
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                            alignment: Alignment.topCenter,
+                            child: _isAdherenceExpanded
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      const SizedBox(height: 8),
+                                      _IntakeDualMacroBar(
+                                        label: 'ALL',
+                                        consumed: all.taken.toDouble(),
+                                        prognostic: all.total.toDouble(),
+                                        target: (all.total > 0 ? all.total : 1)
+                                            .toDouble(),
+                                        unit: '',
+                                        decimals: 0,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _IntakeDualMacroBar(
+                                        label: 'SUPP',
+                                        consumed: sup.taken.toDouble(),
+                                        prognostic: sup.total.toDouble(),
+                                        target: (sup.total > 0 ? sup.total : 1)
+                                            .toDouble(),
+                                        unit: '',
+                                        decimals: 0,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _IntakeDualMacroBar(
+                                        label: 'MED',
+                                        consumed: med.taken.toDouble(),
+                                        prognostic: med.total.toDouble(),
+                                        target: (med.total > 0 ? med.total : 1)
+                                            .toDouble(),
+                                        unit: '',
+                                        decimals: 0,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _IntakeDualMacroBar(
+                                        label: 'OPEN',
+                                        consumed: 0,
+                                        prognostic: _entries
+                                            .where((e) => !e.isTaken)
+                                            .length
+                                            .toDouble(),
+                                        target:
+                                            (all.total > 0 ? all.total : 1)
+                                                .toDouble(),
+                                        unit: '',
+                                        decimals: 0,
+                                      ),
+                                    ],
+                                  )
+                                : const SizedBox.shrink(),
                           ),
                         ],
                       ),
@@ -624,7 +690,7 @@ class _DailyIntakeScreenState extends State<DailyIntakeScreen> {
                   ),
                   Expanded(
                     child: ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                       children: [
                         if (_entries.isEmpty)
                           Padding(
@@ -1950,12 +2016,21 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
     }
 
     if (!mounted) return;
-    final notifTitle = context.l10n.notificationTimeForIntake(item.name);
-    final notifBody = context.l10n.reminderBody;
-
     final nowReal = DateTime.now();
     final today = DateTime(nowReal.year, nowReal.month, nowReal.day);
     final isSupplement = item.type == _IntakeType.supplement;
+    final notifCategory = isSupplement
+        ? VitalityCalendarCategory.supplements
+        : VitalityCalendarCategory.medications;
+    final notifTitle =
+        VitalityNotificationCopy.buildTitle(notifCategory);
+    final notifBody = VitalityNotificationCopy.buildBody(
+      category: notifCategory,
+      itemName: item.name,
+      amount: picked.amount,
+      unit: picked.unit,
+    );
+
     final table = isSupplement ? 'daily_logs' : 'medication_logs';
     final itemTypeStr = isSupplement ? 'supplement' : 'medication';
 
@@ -2041,6 +2116,11 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
             'item_id': newId,
             'target_date': supabaseDateOnly(r.targetDate),
           },
+          alarmItemName: item.name,
+          alarmAmount: VitalityNotificationCopy.formatAmountForDisplay(
+            picked.amount,
+          ),
+          alarmUnit: picked.unit,
         );
       }
 

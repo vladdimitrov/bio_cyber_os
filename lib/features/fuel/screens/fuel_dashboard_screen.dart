@@ -14,6 +14,7 @@ import 'package:bio_cyber_os/l10n/meal_labels.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/macro_display.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/notifications/vitality_notification_copy.dart';
 import '../../../core/supabase_error_message.dart';
 import '../../../core/supabase_log_date.dart';
 import '../../../core/widgets/reminder_section.dart';
@@ -85,6 +86,9 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
   // Extra meals are derived from logs for the selected date.
 
   Timer? _refreshTimer;
+
+  /// When false, macro bars are hidden (same eye semantics as meal blocks).
+  bool _nutritionProgressExpanded = false;
 
   @override
   void initState() {
@@ -1140,7 +1144,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
                     Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
+                      horizontal: 16,
                       vertical: 12,
                     ),
                     decoration: const BoxDecoration(
@@ -1194,61 +1198,123 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            l10n.nutritionDailyProgress,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.0,
-                              color: cyan.withValues(alpha: 0.9),
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  l10n.nutritionDailyProgress,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.0,
+                                    height: 1.35,
+                                    color: cyan.withValues(alpha: 0.9),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => setState(() {
+                                  _nutritionProgressExpanded =
+                                      !_nutritionProgressExpanded;
+                                }),
+                                visualDensity: VisualDensity.compact,
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(40, 40),
+                                  padding: const EdgeInsets.all(6),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 40,
+                                  minHeight: 40,
+                                  maxWidth: 44,
+                                  maxHeight: 44,
+                                ),
+                                iconSize: 22,
+                                icon: Icon(
+                                  _nutritionProgressExpanded
+                                      ? Icons.visibility_off
+                                      : Icons.visibility,
+                                  size: 22,
+                                  color: _nutritionProgressExpanded
+                                      ? AppColors.cyberGold
+                                          .withValues(alpha: 0.75)
+                                      : AppColors.cyberGold,
+                                ),
+                                tooltip: _nutritionProgressExpanded
+                                    ? 'Hide details'
+                                    : 'Show details',
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 10),
-                          _DualMacroBar(
-                            label: l10n.nutritionProtein,
-                            consumed: _todayProtein,
-                            prognostic: _plannedProtein,
-                            target:
-                                displayTargetProtein ?? effectiveTargetProtein,
-                            unit: l10n.gramsSuffix,
-                            decimals: 1,
-                          ),
-                          const SizedBox(height: 8),
-                          _DualMacroBar(
-                            label: l10n.nutritionCarbs,
-                            consumed: _todayCarbs,
-                            prognostic: _plannedCarbs,
-                            target: displayTargetCarbs ?? effectiveTargetCarbs,
-                            unit: l10n.gramsSuffix,
-                            decimals: 1,
-                          ),
-                          const SizedBox(height: 8),
-                          _DualMacroBar(
-                            label: l10n.nutritionFats,
-                            consumed: _todayFats,
-                            prognostic: _plannedFats,
-                            target: displayTargetFats ?? effectiveTargetFats,
-                            unit: l10n.gramsSuffix,
-                            decimals: 1,
-                          ),
-                          const SizedBox(height: 8),
-                          _DualMacroBar(
-                            label: l10n.nutritionCal,
-                            consumed: _todayCalories.toDouble(),
-                            prognostic: _plannedCalories.toDouble(),
-                            target:
-                                (displayTargetCalories ??
-                                        effectiveTargetCalories)
-                                    .toDouble(),
-                            unit: '',
-                            decimals: 0,
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                            alignment: Alignment.topCenter,
+                            child: _nutritionProgressExpanded
+                                ? Column(
+                                    key: const ValueKey(
+                                      'nutrition_progress_expanded',
+                                    ),
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      const SizedBox(height: 8),
+                                      _DualMacroBar(
+                                        label: l10n.nutritionProtein,
+                                        consumed: _todayProtein,
+                                        prognostic: _plannedProtein,
+                                        target: displayTargetProtein ??
+                                            effectiveTargetProtein,
+                                        unit: l10n.gramsSuffix,
+                                        decimals: 1,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _DualMacroBar(
+                                        label: l10n.nutritionCarbs,
+                                        consumed: _todayCarbs,
+                                        prognostic: _plannedCarbs,
+                                        target: displayTargetCarbs ??
+                                            effectiveTargetCarbs,
+                                        unit: l10n.gramsSuffix,
+                                        decimals: 1,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _DualMacroBar(
+                                        label: l10n.nutritionFats,
+                                        consumed: _todayFats,
+                                        prognostic: _plannedFats,
+                                        target: displayTargetFats ??
+                                            effectiveTargetFats,
+                                        unit: l10n.gramsSuffix,
+                                        decimals: 1,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _DualMacroBar(
+                                        label: l10n.nutritionCal,
+                                        consumed: _todayCalories.toDouble(),
+                                        prognostic:
+                                            _plannedCalories.toDouble(),
+                                        target: (displayTargetCalories ??
+                                                effectiveTargetCalories)
+                                            .toDouble(),
+                                        unit: '',
+                                        decimals: 0,
+                                      ),
+                                    ],
+                                  )
+                                : const SizedBox.shrink(),
                           ),
                         ],
                       ),
                     ),
                   ),
                     Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                       child: Column(
                         children: [
                         if (_dailyRecords.isEmpty)
@@ -1393,61 +1459,6 @@ class _MealLogSection extends StatefulWidget {
   State<_MealLogSection> createState() => _MealLogSectionState();
 }
 
-class _NotchedFramePainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-  final double notchWidth;
-  final double notchCenterX;
-
-  _NotchedFramePainter({
-    required this.color,
-    required this.strokeWidth,
-    required this.notchWidth,
-    required this.notchCenterX,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-
-    final r = Rect.fromLTWH(0, 0, size.width, size.height);
-    final leftNotch = (notchCenterX - notchWidth / 2).clamp(
-      6.0,
-      size.width - 6.0,
-    );
-    final rightNotch = (notchCenterX + notchWidth / 2).clamp(
-      6.0,
-      size.width - 6.0,
-    );
-
-    // Top border (split around notch). Draw at y=0, leave the notch gap.
-    canvas.drawLine(const Offset(0, 0), Offset(leftNotch, 0), p);
-    canvas.drawLine(Offset(rightNotch, 0), Offset(size.width, 0), p);
-
-    // Remaining borders
-    canvas.drawLine(const Offset(0, 0), Offset(0, size.height), p);
-    canvas.drawLine(Offset(size.width, 0), Offset(size.width, size.height), p);
-    canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height), p);
-
-    // Subtle inner glow
-    final glow = Paint()
-      ..color = color.withValues(alpha: 0.14)
-      ..style = PaintingStyle.fill;
-    canvas.drawRect(r.deflate(1.0), glow);
-  }
-
-  @override
-  bool shouldRepaint(covariant _NotchedFramePainter oldDelegate) {
-    return oldDelegate.color != color ||
-        oldDelegate.strokeWidth != strokeWidth ||
-        oldDelegate.notchWidth != notchWidth ||
-        oldDelegate.notchCenterX != notchCenterX;
-  }
-}
-
 class _MealLogSectionState extends State<_MealLogSection> {
   bool _detailed = false;
 
@@ -1483,186 +1494,156 @@ class _MealLogSectionState extends State<_MealLogSection> {
       _MealLogSection._accumulateLineMacros(e, subConsumed);
     }
 
-    const titleNeon = Color(0xFF00FFFF);
-    final titleStyle = const TextStyle(
-      color: titleNeon,
-      fontFamily: 'monospace',
-      fontWeight: FontWeight.bold,
-      letterSpacing: 1.4,
-      fontSize: 16,
-    );
-    final tp = TextPainter(
-      text: TextSpan(text: title.toUpperCase(), style: titleStyle),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    // notch includes title + detail-toggle icon spacing (48px tap target)
-    final notchW = tp.width + 26 + 52;
-
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 16),
       child: InkWell(
         onTap: onPlanMeal,
         splashColor: const Color(0x2200F3FF),
         highlightColor: Colors.transparent,
-        child: LayoutBuilder(
-          builder: (context, c) {
-            final w = c.maxWidth;
-            final notchCenterX = w / 2;
-            return CustomPaint(
-              painter: _NotchedFramePainter(
-                color: cyan,
-                strokeWidth: 1,
-                notchWidth: notchW.clamp(80.0, w - 16),
-                notchCenterX: notchCenterX,
-              ),
-              child: Container(
-                color: bg,
-                // More top padding so header notch content never clips.
-                padding: const EdgeInsets.fromLTRB(12, 26, 12, 12),
-                child: Stack(
-                  clipBehavior: Clip.none,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: bg,
+            border: Border.all(color: cyan, width: 1),
+            boxShadow: const [
+              BoxShadow(color: Color(0x2200F3FF), blurRadius: 8),
+            ],
+          ),
+          child: DefaultTextStyle(
+            style: const TextStyle(
+              color: cyan,
+              fontFamily: 'monospace',
+              letterSpacing: 0.4,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // Title embedded in top border notch.
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      top: -24,
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          color: bg,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(title.toUpperCase(), style: titleStyle),
-                              const SizedBox(width: 6),
-                              IconButton(
-                                onPressed: () =>
-                                    setState(() => _detailed = !_detailed),
-                                style: IconButton.styleFrom(
-                                  minimumSize: const Size(52, 52),
-                                  padding: const EdgeInsets.all(13),
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.padded,
-                                ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 52,
-                                  minHeight: 52,
-                                ),
-                                iconSize: 26,
-                                icon: Icon(
-                                  _detailed
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                  size: 26,
-                                  color: _detailed
-                                      ? AppColors.cyberGold
-                                          .withValues(alpha: 0.75)
-                                      : AppColors.cyberGold,
-                                ),
-                                tooltip: _detailed
-                                    ? 'Hide details'
-                                    : 'Show details',
-                              ),
-                            ],
-                          ),
+                    Expanded(
+                      child: Text(
+                        title.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.cyberGold,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
                         ),
                       ),
                     ),
-                    DefaultTextStyle(
-                      style: const TextStyle(
-                        color: cyan,
-                        fontFamily: 'monospace',
-                        letterSpacing: 0.4,
+                    IconButton(
+                      onPressed: () =>
+                          setState(() => _detailed = !_detailed),
+                      visualDensity: VisualDensity.compact,
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(40, 40),
+                        padding: const EdgeInsets.all(6),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 6),
-                          if (_detailed) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              '${l10n.subtotal}  ${l10n.fuelMacrosLine(subAll[0].toStringAsFixed(1), subAll[1].toStringAsFixed(1), subAll[2].toStringAsFixed(1), subAll[3].round().toString())}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                letterSpacing: 0.6,
-                              ),
-                            ),
-                            if (planned.isNotEmpty || consumed.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                l10n.formatMacroCompare(
-                                  subConsumed,
-                                  subPlanned,
-                                ),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  letterSpacing: 0.4,
-                                  color: Color(0x8800F3FF),
-                                ),
-                              ),
-                            ],
-                          ],
-
-                          const SizedBox(height: 10),
-                          if (entries.isEmpty)
-                            Text(
-                              l10n.fuelNoItemsBlock,
-                              style: const TextStyle(
-                                color: Color(0x8800F3FF),
-                                fontFamily: 'monospace',
-                                fontSize: 11,
-                                height: 1.3,
-                              ),
-                            )
-                          else ...[
-                            if (planned.isNotEmpty) ...[
-                              Text(
-                                l10n.plannedUpper,
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.0,
-                                  color: Color(0xFF88CCFF),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              for (final e in planned)
-                                buildFoodItemRow(context, {
-                                  ...toItemMap(e),
-                                  'show_macros': _detailed,
-                                }),
-                              if (consumed.isNotEmpty)
-                                const SizedBox(height: 8),
-                            ],
-                            if (consumed.isNotEmpty) ...[
-                              Text(
-                                l10n.consumedUpper,
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.0,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              for (final e in consumed)
-                                buildFoodItemRow(context, {
-                                  ...toItemMap(e),
-                                  'show_macros': _detailed,
-                                }),
-                            ],
-                          ],
-                        ],
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                        maxWidth: 44,
+                        maxHeight: 44,
                       ),
+                      iconSize: 22,
+                      icon: Icon(
+                        _detailed
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        size: 22,
+                        color: _detailed
+                            ? AppColors.cyberGold.withValues(alpha: 0.75)
+                            : AppColors.cyberGold,
+                      ),
+                      tooltip: _detailed
+                          ? 'Hide details'
+                          : 'Show details',
                     ),
                   ],
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 10),
+                if (_detailed) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '${l10n.subtotal}  ${l10n.fuelMacrosLine(subAll[0].toStringAsFixed(1), subAll[1].toStringAsFixed(1), subAll[2].toStringAsFixed(1), subAll[3].round().toString())}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                  if (planned.isNotEmpty || consumed.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      l10n.formatMacroCompare(
+                        subConsumed,
+                        subPlanned,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        letterSpacing: 0.4,
+                        color: Color(0x8800F3FF),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                ],
+                if (entries.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      l10n.fuelNoItemsBlock,
+                      style: const TextStyle(
+                        color: Color(0x8800F3FF),
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        height: 1.35,
+                      ),
+                    ),
+                  )
+                else ...[
+                  if (planned.isNotEmpty) ...[
+                    Text(
+                      l10n.plannedUpper,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                        color: Color(0xFF88CCFF),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    for (final e in planned)
+                      buildFoodItemRow(context, {
+                        ...toItemMap(e),
+                        'show_macros': _detailed,
+                      }),
+                    if (consumed.isNotEmpty) const SizedBox(height: 8),
+                  ],
+                  if (consumed.isNotEmpty) ...[
+                    Text(
+                      l10n.consumedUpper,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    for (final e in consumed)
+                      buildFoodItemRow(context, {
+                        ...toItemMap(e),
+                        'show_macros': _detailed,
+                      }),
+                  ],
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -2283,8 +2264,15 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
           final target = (i < dates.length) ? dates[i] : DateTime.now();
           await NotificationService.scheduleByKey(
             key: 'daily_logs:$newId',
-            title: context.l10n.reminderTitleMeal(item.name),
-            body: context.l10n.reminderBody,
+            title: VitalityNotificationCopy.buildTitle(
+              VitalityCalendarCategory.fuel,
+            ),
+            body: VitalityNotificationCopy.buildBody(
+              category: VitalityCalendarCategory.fuel,
+              itemName: item.name,
+              amount: grams,
+              unit: unit,
+            ),
             whenLocal: rLocal,
             payload: {
               'item_type': 'food',
@@ -2292,6 +2280,9 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
               'target_date':
                   '${target.year.toString().padLeft(4, '0')}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}',
             },
+            alarmItemName: item.name,
+            alarmAmount: VitalityNotificationCopy.formatAmountForDisplay(grams),
+            alarmUnit: unit,
           );
         }
       }
@@ -2506,10 +2497,18 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
         final name = e.recipeId.isNotEmpty
             ? (e.recipe?.name ?? context.l10n.recipe)
             : (e.ingredient?.name ?? context.l10n.ingredient);
+        final grams = e.amountGrams;
         await NotificationService.scheduleByKey(
           key: 'daily_logs:${e.id}',
-          title: context.l10n.reminderTitleMeal(name),
-          body: context.l10n.reminderBody,
+          title: VitalityNotificationCopy.buildTitle(
+            VitalityCalendarCategory.fuel,
+          ),
+          body: VitalityNotificationCopy.buildBody(
+            category: VitalityCalendarCategory.fuel,
+            itemName: name,
+            amount: grams,
+            unit: 'g',
+          ),
           whenLocal: reminderLocal,
           payload: {
             'item_type': 'food',
@@ -2517,6 +2516,9 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
             'target_date':
                 '${consumedLocal.year.toString().padLeft(4, '0')}-${consumedLocal.month.toString().padLeft(2, '0')}-${consumedLocal.day.toString().padLeft(2, '0')}',
           },
+          alarmItemName: name,
+          alarmAmount: VitalityNotificationCopy.formatAmountForDisplay(grams),
+          alarmUnit: 'g',
         );
       }
       if (!mounted) return;

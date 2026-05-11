@@ -21,6 +21,9 @@ class UniversalReminder {
     required this.body,
     required this.whenLocal,
     this.payload,
+    this.alarmItemName,
+    this.alarmAmount,
+    this.alarmUnit,
   });
 
   final String key;
@@ -28,6 +31,11 @@ class UniversalReminder {
   final String body;
   final DateTime whenLocal;
   final Map<String, dynamic>? payload;
+
+  /// Serialized for [AndroidAlarmManager] isolate + SharedPreferences backup.
+  final String? alarmItemName;
+  final String? alarmAmount;
+  final String? alarmUnit;
 }
 
 @pragma('vm:entry-point')
@@ -76,17 +84,44 @@ class NotificationService {
     int id,
     String title,
     String body,
-    Map<String, dynamic>? payload,
-  ) async {
+    Map<String, dynamic>? payload, {
+    String? alarmItemName,
+    String? alarmAmount,
+    String? alarmUnit,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _alarmPayloadKey(id),
       jsonEncode({
         'title': title,
         'body': body,
+        if (alarmItemName != null && alarmItemName.isNotEmpty)
+          'item_name': alarmItemName,
+        if (alarmAmount != null && alarmAmount.isNotEmpty) 'amount': alarmAmount,
+        if (alarmUnit != null && alarmUnit.isNotEmpty) 'unit': alarmUnit,
         if (payload != null) 'payload': jsonEncode(payload),
       }),
     );
+  }
+
+  static String? _stringFromDynamic(dynamic v) {
+    if (v == null) return null;
+    if (v is String) return v;
+    return v.toString();
+  }
+
+  static String _bodyFromAlarmParts(
+    String? itemName,
+    String? amount,
+    String? unit,
+  ) {
+    final name = (itemName ?? '').trim();
+    final a = (amount ?? '').trim();
+    final u = (unit ?? '').trim();
+    if (name.isEmpty) return '';
+    if (a.isEmpty && u.isEmpty) return name;
+    if (u.isEmpty) return '$name - $a';
+    return '$name - $a $u';
   }
 
   /// True if this [id] was shown from our code paths within the last 2 seconds.
@@ -107,7 +142,10 @@ class NotificationService {
   }
 
   @pragma('vm:entry-point')
-  static Future<void> _alarmManagerFire(int id) async {
+  static Future<void> _alarmManagerFire(
+    int id,
+    Map<String, dynamic> params,
+  ) async {
     WidgetsFlutterBinding.ensureInitialized();
     // Called from AndroidAlarmManager background isolate.
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -125,17 +163,36 @@ class NotificationService {
     } catch (_) {}
 
     final prefs = await SharedPreferences.getInstance();
-    var title = 'Vitality Reminder';
-    var body = '';
+    var title = _stringFromDynamic(params['title'])?.trim() ?? '';
+    var body = _stringFromDynamic(params['body']) ?? '';
+
+    String? itemName = _stringFromDynamic(params['item_name']);
+    String? amount = _stringFromDynamic(params['amount']);
+    String? unit = _stringFromDynamic(params['unit']);
+
     final raw = prefs.getString(_alarmPayloadKey(id));
     if (raw != null && raw.isNotEmpty) {
       try {
         final map = jsonDecode(raw) as Map<String, dynamic>;
-        title = (map['title'] as String?)?.trim().isNotEmpty == true
-            ? map['title'] as String
-            : title;
-        body = (map['body'] as String?) ?? '';
+        if (title.isEmpty) {
+          final t = _stringFromDynamic(map['title'])?.trim();
+          if (t != null && t.isNotEmpty) title = t;
+        }
+        if (body.isEmpty) {
+          final b = _stringFromDynamic(map['body']);
+          if (b != null) body = b;
+        }
+        itemName ??= _stringFromDynamic(map['item_name']);
+        amount ??= _stringFromDynamic(map['amount']);
+        unit ??= _stringFromDynamic(map['unit']);
       } catch (_) {}
+    }
+
+    if (body.isEmpty) {
+      body = _bodyFromAlarmParts(itemName, amount, unit);
+    }
+    if (title.isEmpty) {
+      title = 'Vitality Calendar';
     }
 
     debugPrint('🛠️ REMINDER_CHECK: AlarmManager FIRE id=$id');
@@ -416,6 +473,18 @@ class NotificationService {
         reminder.payload == null ? null : jsonEncode(reminder.payload);
 
     Future<void> registerAndroidAlarmBackup() async {
+      final alarmParams = <String, dynamic>{
+        'title': reminder.title,
+        'body': reminder.body,
+        if (reminder.alarmItemName != null &&
+            reminder.alarmItemName!.trim().isNotEmpty)
+          'item_name': reminder.alarmItemName!.trim(),
+        if (reminder.alarmAmount != null &&
+            reminder.alarmAmount!.trim().isNotEmpty)
+          'amount': reminder.alarmAmount!.trim(),
+        if (reminder.alarmUnit != null && reminder.alarmUnit!.trim().isNotEmpty)
+          'unit': reminder.alarmUnit!.trim(),
+      };
       try {
         await AndroidAlarmManager.oneShotAt(
           scheduledDateTime,
@@ -424,6 +493,7 @@ class NotificationService {
           exact: true,
           wakeup: true,
           allowWhileIdle: true,
+          params: alarmParams,
         );
         debugPrint(
           '🛠️ REMINDER_CHECK: Universal dual — AlarmManager backup id=$id at=$scheduledDateTime',
@@ -484,6 +554,9 @@ class NotificationService {
         reminder.title,
         reminder.body,
         reminder.payload,
+        alarmItemName: reminder.alarmItemName,
+        alarmAmount: reminder.alarmAmount,
+        alarmUnit: reminder.alarmUnit,
       );
     }
 
@@ -529,6 +602,9 @@ class NotificationService {
     required String body,
     required DateTime whenLocal,
     Map<String, dynamic>? payload,
+    String? alarmItemName,
+    String? alarmAmount,
+    String? alarmUnit,
   }) =>
       scheduleUniversal(
         UniversalReminder(
@@ -537,6 +613,9 @@ class NotificationService {
           body: body,
           whenLocal: whenLocal,
           payload: payload,
+          alarmItemName: alarmItemName,
+          alarmAmount: alarmAmount,
+          alarmUnit: alarmUnit,
         ),
       );
 

@@ -9,6 +9,7 @@ import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
 import '../../../core/debug/agent_debug_log.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/notifications/vitality_notification_copy.dart';
 import '../../../core/security/biometric_auth_service.dart';
 import '../../../core/settings/locale_settings.dart';
 import '../../../core/settings/measurement_settings.dart';
@@ -1004,13 +1005,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           );
                           await NotificationService.scheduleByKey(
                             key: 'test_notification_5s',
-                            title: 'TEST NOTIFICATION',
-                            body: 'If you see this, scheduling is working.',
+                            title: VitalityNotificationCopy.buildTitle(
+                              VitalityCalendarCategory.fuel,
+                            ),
+                            body: '🍏 Vitality Test: Avocado - 1.0 piece',
                             whenLocal: when,
                             payload: {
                               'type': 'test',
                               'ts': DateTime.now().toIso8601String(),
                             },
+                            alarmItemName: 'Avocado',
+                            alarmAmount: '1.0',
+                            alarmUnit: 'piece',
                           );
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
