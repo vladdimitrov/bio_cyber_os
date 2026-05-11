@@ -8,6 +8,7 @@ import Foundation
 import app_links
 import flutter_local_notifications
 import flutter_secure_storage_darwin
+import flutter_timezone
 import local_auth_darwin
 import mobile_scanner
 import path_provider_foundation
@@ -19,6 +20,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   AppLinksMacosPlugin.register(with: registry.registrar(forPlugin: "AppLinksMacosPlugin"))
   FlutterLocalNotificationsPlugin.register(with: registry.registrar(forPlugin: "FlutterLocalNotificationsPlugin"))
   FlutterSecureStorageDarwinPlugin.register(with: registry.registrar(forPlugin: "FlutterSecureStorageDarwinPlugin"))
+  FlutterTimezonePlugin.register(with: registry.registrar(forPlugin: "FlutterTimezonePlugin"))
   LocalAuthPlugin.register(with: registry.registrar(forPlugin: "LocalAuthPlugin"))
   MobileScannerPlugin.register(with: registry.registrar(forPlugin: "MobileScannerPlugin"))
   PathProviderPlugin.register(with: registry.registrar(forPlugin: "PathProviderPlugin"))

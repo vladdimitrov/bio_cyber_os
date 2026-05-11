@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
@@ -782,6 +784,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: cyan, width: 1),
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  if (defaultTargetPlatform !=
+                                      TargetPlatform.android) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Fix Permissions is Android-only.',
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  await Permission.scheduleExactAlarm.request();
+                                  await Permission.ignoreBatteryOptimizations
+                                      .request();
+                                  await Permission.systemAlertWindow.request();
+                                },
+                                child: const Text(
+                                  '🛠️ Fix Permissions',
+                                  style: TextStyle(
+                                    color: cyan,
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.red, width: 2),
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  debugPrint('DEBUG: Settings -> DEBUG SHOW NOW pressed');
+                                  await NotificationService.showDebugNow(
+                                    key: 'debug_show_now',
+                                    title: 'DEBUG SHOW NOW',
+                                    body: 'If you see/hear this, show() works.',
+                                  );
+                                },
+                                child: const Text(
+                                  '🔔 DEBUG SHOW NOW',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
                     const SizedBox(height: 14),
                     Text(
                       l10n.languageSectionTitle,
@@ -900,6 +969,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         activeThumbColor: cyan,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: cyan, width: 1),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero,
+                          ),
+                        ),
+                        onPressed: () async {
+                          final ok =
+                              await NotificationService.requestPermissionIfNeeded(
+                            context,
+                          );
+                          if (!context.mounted) return;
+                          if (!ok) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content:
+                                    Text(l10n.settingsNotificationsDenied),
+                              ),
+                            );
+                            return;
+                          }
+                          debugPrint(
+                            '🛠️ DEBUG: Testing schedule for 5 seconds from now...',
+                          );
+                          final when = DateTime.now().add(
+                            const Duration(seconds: 5),
+                          );
+                          await NotificationService.scheduleByKey(
+                            key: 'test_notification_5s',
+                            title: 'TEST NOTIFICATION',
+                            body: 'If you see this, scheduling is working.',
+                            whenLocal: when,
+                            payload: {
+                              'type': 'test',
+                              'ts': DateTime.now().toIso8601String(),
+                            },
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Test notification scheduled (+5s)'),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'TEST NOTIFICATION (+5s)',
+                          style: TextStyle(
+                            color: cyan,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),

@@ -4,16 +4,45 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- BiometricPrompt / FingerprintManager (legacy pre-P); both recommended for OEM compatibility. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Foreground Service Permission -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:label="Bio-Cyber OS"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher">
+        <!-- android_alarm_manager_plus -->
+        <service
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.RebootBroadcastReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name="com.dexterous.flutterlocalnotifications.ForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

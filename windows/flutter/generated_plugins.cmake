@@ -5,7 +5,9 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   flutter_secure_storage_windows
+  flutter_timezone
   local_auth_windows
+  permission_handler_windows
   printing
   url_launcher_windows
 )

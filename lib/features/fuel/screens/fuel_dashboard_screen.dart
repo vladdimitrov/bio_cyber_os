@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -16,6 +17,7 @@ import '../../../core/notifications/notification_service.dart';
 import '../../../core/supabase_error_message.dart';
 import '../../../core/supabase_log_date.dart';
 import '../../../core/widgets/reminder_section.dart';
+import '../../../core/widgets/schedule_selector.dart';
 import '../../../core/models/ingredient.dart';
 import '../../../core/widgets/diet_indicator_badges.dart';
 import '../../food/screens/barcode_scanner_screen.dart';
@@ -39,7 +41,8 @@ class FuelDashboardScreen extends StatefulWidget {
   State<FuelDashboardScreen> createState() => _FuelDashboardScreenState();
 }
 
-class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
+class _FuelDashboardScreenState extends State<FuelDashboardScreen>
+    with WidgetsBindingObserver {
   final _client = Supabase.instance.client;
 
   /// Supabase table for fuel entries (`daily_logs` or `food_logs` if renamed).
@@ -81,12 +84,25 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   List<_DailyRecord> _dailyRecords = const [];
   // Extra meals are derived from logs for the selected date.
 
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (t) {
+      if (mounted) setState(() {});
+    });
     _loadTargets();
     _subscribeTargets();
     _initDayTotals();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -132,6 +148,8 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
     _todayLogsChannel?.unsubscribe();
     _targetsChannel?.unsubscribe();
     super.dispose();
@@ -619,18 +637,15 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
   }
 
   Future<void> _planMealFlow(String mealType) async {
+    // Keep this flow silent/non-intrusive: default to current time.
     final now = TimeOfDay.now();
-    final pickedTime = await showTimePicker(context: context, initialTime: now);
-    if (pickedTime == null) return;
-    if (!mounted) return;
-
     final day = _startOfSelectedDayLocal();
     final consumedLocal = DateTime(
       day.year,
       day.month,
       day.day,
-      pickedTime.hour,
-      pickedTime.minute,
+      now.hour,
+      now.minute,
     );
 
     final result = await showModalBottomSheet<bool>(
@@ -842,7 +857,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
       if (!showTake) return false;
       try {
         final slot = DateTime.parse(slotIso).toLocal();
-        return DateTime.now().isAfter(slot.add(const Duration(minutes: 60)));
+        return slot.isBefore(DateTime.now());
       } catch (_) {
         return false;
       }
@@ -900,14 +915,17 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                     ),
                     if (missed) ...[
                       const SizedBox(width: 8),
-                      Text(
-                        l10n.missed,
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.8,
-                          fontSize: 11,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'ПРОПУСНАТО',
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.8,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],
@@ -1108,9 +1126,18 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                   style: const TextStyle(color: cyan),
                 ),
               )
-            : Column(
-                children: [
-                  Container(
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: constraints.maxWidth,
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Column(
+                  children: [
+                    Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -1220,10 +1247,10 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                       ),
                     ),
                   ),
-                  Expanded(
-                    child: ListView(
+                    Padding(
                       padding: const EdgeInsets.all(12),
-                      children: [
+                      child: Column(
+                        children: [
                         if (_dailyRecords.isEmpty)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
@@ -1292,11 +1319,15 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen> {
                             ),
                           ),
                         ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+            );
+        },
+      ),
       ),
     );
   }
@@ -1641,26 +1672,41 @@ class _MealLogSectionState extends State<_MealLogSection> {
 /// Grams prompt for food logging — controller lifecycle tied to this route.
 class _FuelGramsDialog extends StatefulWidget {
   final String foodLabel;
+  final LogIntakeTab initialTab;
 
-  const _FuelGramsDialog({required this.foodLabel});
+  const _FuelGramsDialog({
+    required this.foodLabel,
+    required this.initialTab,
+  });
 
   @override
   State<_FuelGramsDialog> createState() => _FuelGramsDialogState();
 }
 
+enum LogIntakeTab { logNow, plan }
+
 class _FuelGramsDialogState extends State<_FuelGramsDialog> {
   late final TextEditingController _controller;
-  TimeOfDay? _intakeTime;
+  late final TextEditingController _timeController;
   ReminderState _reminder = const ReminderState.disabled();
-  bool _repeatEnabled = false;
-  final _repeatCtrl = TextEditingController(text: '1');
+  LogIntakeTab _selectedTab = LogIntakeTab.logNow;
+  String _selectedBlock = 'MORNING';
+  ScheduleSelection _schedule = const ScheduleSelection();
   late List<String> _units;
   late String _unit;
+
+  static const _blocks = <String>['MORNING', 'AFTERNOON', 'EVENING', 'NIGHT'];
+  static String _fmtNowHhmm() {
+    final n = DateTime.now();
+    return '${n.hour.toString().padLeft(2, '0')}:${n.minute.toString().padLeft(2, '0')}';
+  }
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
+    _timeController = TextEditingController(text: _fmtNowHhmm());
+    _selectedTab = widget.initialTab;
     final sys = MeasurementSettings.system.value;
     _units = UnitOptions.forContext(UnitContext.food, sys);
     _unit = UnitOptions.defaultUnit(UnitContext.food, sys);
@@ -1669,8 +1715,16 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
   @override
   void dispose() {
     _controller.dispose();
-    _repeatCtrl.dispose();
+    _timeController.dispose();
     super.dispose();
+  }
+
+  static TimeOfDay _parseHhmm(String hhmm) {
+    final parts = hhmm.trim().split(':');
+    if (parts.length != 2) return const TimeOfDay(hour: 8, minute: 0);
+    final h = int.tryParse(parts[0]) ?? 8;
+    final m = int.tryParse(parts[1]) ?? 0;
+    return TimeOfDay(hour: h.clamp(0, 23), minute: m.clamp(0, 59));
   }
 
   @override
@@ -1678,11 +1732,8 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
     final loc = context.l10n;
-    final timeLabel = _intakeTime == null
-        ? loc.fuelIntakeTimeDash
-        : loc.intakeTimeAt(
-            '${_intakeTime!.hour.toString().padLeft(2, '0')}:${_intakeTime!.minute.toString().padLeft(2, '0')}',
-          );
+
+    final timeLabel = loc.intakeTimeAt(_timeController.text);
     return AlertDialog(
       backgroundColor: bg,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
@@ -1696,34 +1747,133 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await showTimePicker(
-                      context: context,
-                      initialTime: _intakeTime ?? TimeOfDay.now(),
-                    );
-                    if (picked == null) return;
-                    if (!mounted) return;
-                    setState(() => _intakeTime = picked);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: cyan,
-                    side: const BorderSide(color: cyan, width: 1),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
+              SegmentedButton<LogIntakeTab>(
+                segments: [
+                  ButtonSegment<LogIntakeTab>(
+                    value: LogIntakeTab.logNow,
+                    label: Text(
+                      loc.intakeAddModeLogNow,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                      ),
                     ),
                   ),
-                  icon: const Icon(Icons.schedule),
-                  label: Text(
-                    timeLabel,
-                    style: const TextStyle(
+                  ButtonSegment<LogIntakeTab>(
+                    value: LogIntakeTab.plan,
+                    label: Text(
+                      loc.intakeAddModePlan,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
+                selected: {_selectedTab},
+                onSelectionChanged: (newSelection) {
+                  setState(() => _selectedTab = newSelection.first);
+                },
+                style: ButtonStyle(
+                  foregroundColor: WidgetStateProperty.all(cyan),
+                  side: WidgetStateProperty.all(
+                    const BorderSide(color: cyan, width: 1),
+                  ),
+                  shape: WidgetStateProperty.all(
+                    const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  ),
+                ),
+                showSelectedIcon: false,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'DEBUG: CURRENT TAB IS $_selectedTab',
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Text(
+                    'Block',
+                    style: TextStyle(
+                      color: cyan,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                      fontSize: 11,
+                      fontSize: 12,
                     ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButton<String>(
+                      value: _selectedBlock,
+                      dropdownColor: bg,
+                      isExpanded: true,
+                      underline: Container(height: 1, color: cyan),
+                      items: _blocks
+                          .map(
+                            (b) => DropdownMenuItem(
+                              value: b,
+                              child: Text(
+                                localizedTimeBlock(loc, b),
+                                style: const TextStyle(
+                                  color: cyan,
+                                  fontFamily: 'monospace',
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
+                      onChanged: (String? val) {
+                        if (val == null) return;
+                        setState(() {
+                          _selectedBlock = val;
+                          if (val == 'MORNING') {
+                            _timeController.text = '08:00';
+                          } else if (val == 'AFTERNOON') {
+                            _timeController.text = '13:00';
+                          } else if (val == 'EVENING') {
+                            _timeController.text = '19:00';
+                          } else if (val == 'NIGHT') {
+                            _timeController.text = '22:00';
+                          }
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _timeController,
+                readOnly: true,
+                onTap: () async {
+                  final picked = await showTimePicker(
+                    context: context,
+                    initialTime: _parseHhmm(_timeController.text),
+                  );
+                  if (picked == null) return;
+                  if (!mounted) return;
+                  setState(() {
+                    _timeController.text =
+                        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+                  });
+                },
+                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                decoration: InputDecoration(
+                  labelText: timeLabel,
+                  enabledBorder: const OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: cyan, width: 1),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: cyan, width: 1.5),
                   ),
                 ),
               ),
@@ -1797,51 +1947,20 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
                 onChanged: (s) => setState(() => _reminder = s),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      loc.fuelScheduleMultiDays,
-                      style: const TextStyle(
-                        color: Color(0x8800F3FF),
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        letterSpacing: 1.0,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+              if (_selectedTab == LogIntakeTab.plan)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.cyberGold, width: 2),
                   ),
-                  Switch(
-                    value: _repeatEnabled,
-                    activeThumbColor: cyan,
-                    onChanged: (v) => setState(() {
-                      _repeatEnabled = v;
-                      if (v && _repeatCtrl.text.trim().isEmpty) {
-                        _repeatCtrl.text = '2';
-                      }
-                    }),
+                  child: ScheduleSelector(
+                    selection: _schedule,
+                    onChanged: (s) => setState(() => _schedule = s),
+                    baseDate: DateTime.now(),
                   ),
-                ],
-              ),
-              if (_repeatEnabled) ...[
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _repeatCtrl,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                  decoration: InputDecoration(
-                    labelText: loc.fuelRepeatDaysLabel,
-                    enabledBorder: const OutlineInputBorder(
-                      borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: cyan, width: 1),
-                    ),
-                    focusedBorder: const OutlineInputBorder(
-                      borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: cyan, width: 1.5),
-                    ),
-                  ),
-                ),
-              ],
+                )
+              else
+                const SizedBox.shrink(),
               const SizedBox(height: 8),
             ],
           ),
@@ -1853,27 +1972,26 @@ class _FuelGramsDialogState extends State<_FuelGramsDialog> {
               Navigator.of(context).pop<
                 ({
                   String grams,
-                  TimeOfDay? intakeTime,
                   ReminderState reminder,
                   String unit,
-                  int repeatDays,
+                  LogIntakeTab tab,
+                  String block,
+                  String timeText,
+                  ScheduleSelection schedule,
                 })?
               >(null),
           child: Text(loc.cancel),
         ),
         TextButton(
           onPressed: () {
-            var repeat = 1;
-            if (_repeatEnabled) {
-              final parsed = int.tryParse(_repeatCtrl.text.trim());
-              if (parsed != null && parsed > 0) repeat = parsed;
-            }
             Navigator.of(context).pop((
               grams: _controller.text.trim(),
-              intakeTime: _intakeTime,
               reminder: _reminder,
               unit: _unit,
-              repeatDays: repeat,
+              tab: _selectedTab,
+              block: _selectedBlock,
+              timeText: _timeController.text.trim(),
+              schedule: _schedule,
             ));
           },
           child: Text(loc.ok),
@@ -2052,16 +2170,19 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
   }
 
   Future<void> _handleFoodPickTap(_FoodPick item) async {
-    final picked = await _promptGrams(item.name);
+    final picked = await _promptGrams(
+      item.name,
+      initialTab: widget.planOnly ? LogIntakeTab.plan : LogIntakeTab.logNow,
+    );
     if (picked == null) return;
     final grams = picked.grams;
     final unit = picked.unit;
 
-    final consumed = !widget.planOnly;
     final base = DateTime.tryParse(widget.consumedAtIsoUtc)?.toLocal();
     final local = base ?? DateTime.now();
 
-    final intakeTod = picked.intakeTime ?? TimeOfDay.fromDateTime(local);
+    final logNow = picked.tab == LogIntakeTab.logNow;
+    final intakeTod = picked.intakeTime;
     final intakeLocal = DateTime(
       local.year,
       local.month,
@@ -2096,15 +2217,29 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
         return;
       }
 
-      final n = picked.repeatDays <= 0 ? 1 : picked.repeatDays;
       final rows = <Map<String, dynamic>>[];
       final reminderLocals = <DateTime?>[];
 
-      for (var i = 0; i < n; i++) {
-        final shift = Duration(days: i);
-        final intakeI = intakeLocal.add(shift);
-        final reminderI = reminderLocal?.add(shift);
-        final isConsumedI = i == 0 ? consumed : false;
+      final dates = logNow ? <DateTime>[picked.targetDates.first] : picked.targetDates;
+      for (var i = 0; i < dates.length; i++) {
+        final d = dates[i];
+        final intakeI = DateTime(
+          d.year,
+          d.month,
+          d.day,
+          intakeTod.hour,
+          intakeTod.minute,
+        );
+        final reminderI = reminderLocal == null
+            ? null
+            : DateTime(
+                d.year,
+                d.month,
+                d.day,
+                reminderLocal.hour,
+                reminderLocal.minute,
+              );
+        final isConsumedI = logNow;
 
         final extraI = reminderI == null
             ? const <String, dynamic>{}
@@ -2145,7 +2280,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
         final rLocal = (i < reminderLocals.length) ? reminderLocals[i] : null;
         if (rLocal != null && newId.isNotEmpty) {
           if (!mounted) return;
-          final target = intakeLocal.add(Duration(days: i));
+          final target = (i < dates.length) ? dates[i] : DateTime.now();
           await NotificationService.scheduleByKey(
             key: 'daily_logs:$newId',
             title: context.l10n.reminderTitleMeal(item.name),
@@ -2415,7 +2550,9 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
       return Scaffold(
         backgroundColor: bg,
         body: SafeArea(
-          child: Column(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(
@@ -2581,6 +2718,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                 ),
               ),
             ],
+            ),
           ),
         ),
       );
@@ -2605,9 +2743,11 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
 
     return Scaffold(
       backgroundColor: bg,
-      body: Column(
-        children: [
-          Container(
+      body: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: const BoxDecoration(
@@ -2737,7 +2877,8 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                     },
                   ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2745,25 +2886,32 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
   Future<
     ({
       double grams,
-      TimeOfDay? intakeTime,
       ReminderState reminder,
       String unit,
-      int repeatDays,
+      LogIntakeTab tab,
+      String block,
+      TimeOfDay intakeTime,
+      List<DateTime> targetDates,
     })?
   >
-  _promptGrams(String label) async {
+  _promptGrams(String label, {required LogIntakeTab initialTab}) async {
     final res =
         await showDialog<
           ({
             String grams,
-            TimeOfDay? intakeTime,
             ReminderState reminder,
             String unit,
-            int repeatDays,
+            LogIntakeTab tab,
+            String block,
+            String timeText,
+            ScheduleSelection schedule,
           })?
         >(
           context: context,
-          builder: (context) => _FuelGramsDialog(foodLabel: label),
+          builder: (context) => _FuelGramsDialog(
+            foodLabel: label,
+            initialTab: initialTab,
+          ),
         );
     if (res == null) return null;
     final raw = res.grams.trim();
@@ -2794,12 +2942,22 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
         gramsMetric = v;
         break;
     }
+
+    final intakeTime = _FuelGramsDialogState._parseHhmm(res.timeText);
+    final baseDate = DateTime.now();
+    final baseDateOnly = DateTime(baseDate.year, baseDate.month, baseDate.day);
+    final targetDates = res.tab == LogIntakeTab.plan
+        ? res.schedule.resolveDates(baseDateOnly)
+        : <DateTime>[baseDateOnly];
+
     return (
       grams: gramsMetric,
-      intakeTime: res.intakeTime,
       reminder: res.reminder,
       unit: res.unit,
-      repeatDays: res.repeatDays,
+      tab: res.tab,
+      block: res.block,
+      intakeTime: intakeTime,
+      targetDates: targetDates,
     );
   }
 }

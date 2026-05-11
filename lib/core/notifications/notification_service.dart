@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
-import 'package:timezone/data/latest.dart' as tz;
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import 'in_app_reminder_dispatcher.dart';
@@ -11,6 +13,24 @@ import '../settings/notification_settings.dart';
 import 'web_notification_permissions_stub.dart'
     if (dart.library.html) 'web_notification_permissions_web.dart';
 
+/// Parameters for [NotificationService.scheduleUniversal].
+class UniversalReminder {
+  const UniversalReminder({
+    required this.key,
+    required this.title,
+    required this.body,
+    required this.whenLocal,
+    this.payload,
+  });
+
+  final String key;
+  final String title;
+  final String body;
+  final DateTime whenLocal;
+  final Map<String, dynamic>? payload;
+}
+
+@pragma('vm:entry-point')
 class NotificationService {
   NotificationService._();
 
@@ -18,6 +38,118 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static bool _inited = false;
+
+  /// New channel id — Android will not upgrade an existing channel's importance.
+  static const String _androidChannelId = 'vitality_system_alerts';
+  static const String _androidChannelName = 'Vitality System Alerts';
+  static const String _androidChannelDesc =
+      'Critical reminders for health protocols';
+
+  static const AndroidNotificationDetails _androidReminderDetails =
+      AndroidNotificationDetails(
+    _androidChannelId,
+    _androidChannelName,
+    channelDescription: _androidChannelDesc,
+    importance: Importance.max,
+    priority: Priority.max,
+    fullScreenIntent: true,
+    category: AndroidNotificationCategory.alarm,
+    visibility: NotificationVisibility.public,
+    playSound: true,
+    enableVibration: true,
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+  );
+
+  static const DarwinNotificationDetails _darwinDetails =
+      DarwinNotificationDetails();
+
+  static const NotificationDetails _reminderDetails = NotificationDetails(
+    android: _androidReminderDetails,
+    iOS: _darwinDetails,
+    macOS: _darwinDetails,
+  );
+
+  static String _alarmPayloadKey(int id) => 'vitality_os_alarm_payload_$id';
+  static String _lastNotifyKey(int id) => 'vitality_os_last_notify_$id';
+
+  static Future<void> _writeAlarmPayloadPref(
+    int id,
+    String title,
+    String body,
+    Map<String, dynamic>? payload,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _alarmPayloadKey(id),
+      jsonEncode({
+        'title': title,
+        'body': body,
+        if (payload != null) 'payload': jsonEncode(payload),
+      }),
+    );
+  }
+
+  /// True if this [id] was shown from our code paths within the last 2 seconds.
+  static Future<bool> _recentlyNotifiedSameId(int id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last =
+        int.tryParse(prefs.getString(_lastNotifyKey(id)) ?? '') ?? 0;
+    return last > 0 && now - last < 2000;
+  }
+
+  static Future<void> _markNotified(int id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _lastNotifyKey(id),
+      '${DateTime.now().millisecondsSinceEpoch}',
+    );
+  }
+
+  @pragma('vm:entry-point')
+  static Future<void> _alarmManagerFire(int id) async {
+    WidgetsFlutterBinding.ensureInitialized();
+    // Called from AndroidAlarmManager background isolate.
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const settings = InitializationSettings(android: androidInit);
+    final plugin = FlutterLocalNotificationsPlugin();
+    await plugin.initialize(settings);
+
+    if (await _recentlyNotifiedSameId(id)) {
+      debugPrint('🛠️ REMINDER_CHECK: Dedupe skip AlarmManager id=$id');
+      return;
+    }
+
+    try {
+      await plugin.cancel(id);
+    } catch (_) {}
+
+    final prefs = await SharedPreferences.getInstance();
+    var title = 'Vitality Reminder';
+    var body = '';
+    final raw = prefs.getString(_alarmPayloadKey(id));
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final map = jsonDecode(raw) as Map<String, dynamic>;
+        title = (map['title'] as String?)?.trim().isNotEmpty == true
+            ? map['title'] as String
+            : title;
+        body = (map['body'] as String?) ?? '';
+      } catch (_) {}
+    }
+
+    debugPrint('🛠️ REMINDER_CHECK: AlarmManager FIRE id=$id');
+    await plugin.show(
+      id,
+      title,
+      body,
+      _reminderDetails,
+    );
+    await _markNotified(id);
+    try {
+      await prefs.remove(_alarmPayloadKey(id));
+    } catch (_) {}
+  }
 
   static bool get _nativeSupported {
     if (kIsWeb) return false;
@@ -45,13 +177,10 @@ class NotificationService {
       return;
     }
 
-    tz.initializeTimeZones();
-
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwinInit = DarwinInitializationSettings();
     const windowsInit = WindowsInitializationSettings(
       appName: 'BIO_CYBER OS',
-      // Stable identifiers for Windows toast notifications.
       appUserModelId: 'com.biocyber.os',
       guid: '2b8a8c3e-7d7b-4af2-9fd8-9a7a46b3f3e1',
     );
@@ -67,22 +196,72 @@ class NotificationService {
       linux: linuxInit,
     );
 
-    await _plugin.initialize(settings);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (resp) {
+        debugPrint(
+          'DEBUG: onDidReceiveNotificationResponse actionId=${resp.actionId} '
+          'payload=${resp.payload} input=${resp.input}',
+        );
+      },
+    );
 
-    // Create the Android channel up front.
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await android?.createNotificationChannel(
       const AndroidNotificationChannel(
-        'reminders',
-        'Reminders',
-        description: 'Food/Supps/Meds reminders',
+        _androidChannelId,
+        _androidChannelName,
+        description: _androidChannelDesc,
         importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
     );
   }
 
-  /// Best-effort permission request. Returns true if granted/available.
+  static Future<void> _promptExactAlarmSettings(BuildContext context) async {
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF050510),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: const Text(
+          'EXACT ALARMS OFF',
+          style: TextStyle(
+            color: Color(0xFF00F3FF),
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        content: const Text(
+          'Reminders need exact alarms so they fire on time (especially on Pixel / Android 14+).\n\n'
+          'Open system settings and allow “Alarms & reminders” (or “Schedule exact alarm”) for this app.',
+          style: TextStyle(
+            color: Color(0xFF00F3FF),
+            fontFamily: 'monospace',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('NOT NOW'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await openAppSettings();
+            },
+            child: const Text('OPEN SETTINGS'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Best-effort permission request. Returns true if notifications are enabled.
   static Future<bool> requestPermissionIfNeeded(BuildContext context) async {
     await init();
 
@@ -92,7 +271,6 @@ class NotificationService {
     }
 
     if (!_nativeSupported) {
-      // Desktop: in-app reminders don't require OS permissions.
       return true;
     }
 
@@ -102,11 +280,25 @@ class NotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) {
       granted = await android.requestNotificationsPermission();
-      // Best-effort: request exact-alarm permission on Android 12+ if needed.
-      // If API isn't available or permission can't be requested, we will fall back
-      // to inexact scheduling when the user tries to schedule reminders.
+
       try {
         await android.requestExactAlarmsPermission();
+      } catch (_) {}
+
+      try {
+        var exactStatus = await Permission.scheduleExactAlarm.status;
+        if (exactStatus.isDenied || exactStatus.isRestricted) {
+          await Permission.scheduleExactAlarm.request();
+          exactStatus = await Permission.scheduleExactAlarm.status;
+        }
+        if (context.mounted &&
+            (exactStatus.isDenied || exactStatus.isRestricted)) {
+          await _promptExactAlarmSettings(context);
+        }
+      } catch (_) {}
+
+      try {
+        await android.requestFullScreenIntentPermission();
       } catch (_) {}
     }
 
@@ -130,7 +322,6 @@ class NotificationService {
       );
     }
 
-    // Windows/Linux: no runtime permission prompt in most setups.
     granted ??= true;
 
     if (granted != true && context.mounted) {
@@ -171,11 +362,165 @@ class NotificationService {
 
   static Future<void> cancelByKey(String key) async {
     await init();
+    final id = hashId(key);
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await AndroidAlarmManager.cancel(id);
+      } catch (_) {}
+    }
     if (_nativeSupported) {
-      await _plugin.cancel(hashId(key));
+      await _plugin.cancel(id);
     } else {
       await InAppReminderDispatcher.cancel(key);
     }
+  }
+
+  /// Dual-trigger Android: [zonedSchedule] + [AndroidAlarmManager.oneShotAt].
+  /// iOS / desktop: zoned or in-app only.
+  static Future<void> scheduleUniversal(UniversalReminder reminder) async {
+    await init();
+
+    if (!NotificationSettings.enabled.value) return;
+
+    try {
+      tz.setLocalLocation(tz.getLocation('Europe/Sofia'));
+    } catch (_) {}
+    debugPrint(
+      '🌍 TIMEZONE_SYNC: Local time is now ${tz.TZDateTime.now(tz.local)}',
+    );
+
+    final targetLocal = reminder.whenLocal.isUtc
+        ? reminder.whenLocal.toLocal()
+        : reminder.whenLocal;
+    final tzNow = tz.TZDateTime.now(tz.local);
+    final scheduledDateTime = tz.TZDateTime.from(targetLocal, tz.local);
+    if (!scheduledDateTime.isAfter(tzNow)) return;
+
+    if (!_nativeSupported) {
+      await InAppReminderDispatcher.schedule(
+        key: reminder.key,
+        title: reminder.title,
+        body: reminder.body,
+        whenLocal: targetLocal,
+        payload: reminder.payload,
+      );
+      // ignore: avoid_print
+      print(
+        'DEBUG: In-app reminder scheduled for ${targetLocal.toIso8601String()} with content "${reminder.title}" | "${reminder.body}"',
+      );
+      return;
+    }
+
+    final id = hashId(reminder.key);
+    final payloadStr =
+        reminder.payload == null ? null : jsonEncode(reminder.payload);
+
+    Future<void> registerAndroidAlarmBackup() async {
+      try {
+        await AndroidAlarmManager.oneShotAt(
+          scheduledDateTime,
+          id,
+          _alarmManagerFire,
+          exact: true,
+          wakeup: true,
+          allowWhileIdle: true,
+        );
+        debugPrint(
+          '🛠️ REMINDER_CHECK: Universal dual — AlarmManager backup id=$id at=$scheduledDateTime',
+        );
+      } catch (e) {
+        debugPrint('🛠️ REMINDER_CHECK: AlarmManager oneShotAt failed: $e');
+      }
+    }
+
+    Future<void> doZoned(AndroidScheduleMode mode) async {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      bool? enabled;
+      try {
+        enabled = await android?.areNotificationsEnabled();
+      } catch (_) {
+        enabled = null;
+      }
+      final exactSt = await Permission.scheduleExactAlarm.status;
+      final notifSt = await Permission.notification.status;
+      debugPrint(
+        '🛠️ REMINDER_CHECK: Device Time: ${tz.TZDateTime.now(tz.local)}',
+      );
+      debugPrint('🛠️ REMINDER_CHECK: Scheduling for: $scheduledDateTime');
+      debugPrint('🛠️ REMINDER_CHECK: Notification ID: $id');
+      debugPrint('🚀 PIXEL_LOG: Reminder set for $scheduledDateTime');
+      debugPrint(
+        '🛠️ REMINDER_CHECK: tz.local=${tz.local.name} '
+        'offset=${tz.TZDateTime.now(tz.local).timeZoneOffset} '
+        'notifEnabled=$enabled exactAlarm=$exactSt postNotif=$notifSt',
+      );
+
+      await _plugin.zonedSchedule(
+        id,
+        reminder.title,
+        reminder.body,
+        scheduledDateTime,
+        _reminderDetails,
+        payload: payloadStr,
+        androidScheduleMode: mode,
+        matchDateTimeComponents: null,
+      );
+
+      try {
+        final pending = await _plugin.pendingNotificationRequests();
+        debugPrint(
+          '🛠️ REMINDER_CHECK: pendingNotificationRequests=${pending.length} '
+          '(containsThisId=${pending.any((p) => p.id == id)})',
+        );
+      } catch (e) {
+        debugPrint('🛠️ REMINDER_CHECK: pendingNotificationRequests failed: $e');
+      }
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _writeAlarmPayloadPref(
+        id,
+        reminder.title,
+        reminder.body,
+        reminder.payload,
+      );
+    }
+
+    // Trigger 1: OS-scheduled notification (all platforms).
+    try {
+      await doZoned(AndroidScheduleMode.exactAllowWhileIdle);
+    } on PlatformException catch (e) {
+      // ignore: avoid_print
+      print(
+        'DEBUG: Notification schedule PlatformException: ${e.code} ${e.message}',
+      );
+      try {
+        await doZoned(AndroidScheduleMode.inexactAllowWhileIdle);
+      } catch (e2) {
+        // ignore: avoid_print
+        print('DEBUG: Notification schedule failed after fallback: $e2');
+        if (defaultTargetPlatform != TargetPlatform.android) {
+          return;
+        }
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('DEBUG: Notification schedule failed: $e');
+      if (defaultTargetPlatform != TargetPlatform.android) {
+        return;
+      }
+    }
+
+    // Trigger 2: AlarmManager backup (Android only), synchronized to same [id] and time.
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await registerAndroidAlarmBackup();
+    }
+
+    // ignore: avoid_print
+    print(
+      'DEBUG: Notification scheduled for ${targetLocal.toIso8601String()} with content "${reminder.title}" | "${reminder.body}"',
+    );
   }
 
   static Future<void> scheduleByKey({
@@ -184,91 +529,77 @@ class NotificationService {
     required String body,
     required DateTime whenLocal,
     Map<String, dynamic>? payload,
+  }) =>
+      scheduleUniversal(
+        UniversalReminder(
+          key: key,
+          title: title,
+          body: body,
+          whenLocal: whenLocal,
+          payload: payload,
+        ),
+      );
+
+  static Future<void> scheduleTestIn5Seconds({
+    required String key,
+    required String title,
+    required String body,
   }) async {
     await init();
-
     if (!NotificationSettings.enabled.value) return;
+    if (!_nativeSupported) return;
 
-    final now = DateTime.now();
-    if (!whenLocal.isAfter(now)) return;
+    final now = tz.TZDateTime.now(tz.local);
+    final scheduledDateTime = now.add(const Duration(seconds: 5));
+    debugPrint('🔔 TZ.LOCAL: ${tz.local.name} offset=${now.timeZoneOffset}');
+    debugPrint('🔔 ACTUAL LOCAL TIME: ${now.toString()}');
+    debugPrint('🔔 ACTUAL TARGET TIME: ${scheduledDateTime.toString()}');
 
-    if (!_nativeSupported) {
-      await InAppReminderDispatcher.schedule(
+    await scheduleUniversal(
+      UniversalReminder(
         key: key,
         title: title,
         body: body,
-        whenLocal: whenLocal,
-        payload: payload,
-      );
-      // ignore: avoid_print
-      print(
-        'DEBUG: In-app reminder scheduled for ${whenLocal.toIso8601String()} with content "$title" | "$body"',
-      );
-      return;
-    }
-
-    const androidDetails = AndroidNotificationDetails(
-      'reminders',
-      'Reminders',
-      channelDescription: 'Food/Supps/Meds reminders',
-      importance: Importance.max,
-      priority: Priority.high,
-    );
-    const iosDetails = DarwinNotificationDetails();
-    const details = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-      macOS: iosDetails,
-    );
-
-    final when = tz.TZDateTime.from(whenLocal, tz.local);
-    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-
-    Future<void> trySchedule(AndroidScheduleMode mode) async {
-      await _plugin.zonedSchedule(
-        hashId(key),
-        title,
-        body,
-        when,
-        details,
-        payload: payload == null ? null : jsonEncode(payload),
-        androidScheduleMode: mode,
-        matchDateTimeComponents: null,
-      );
-    }
-
-    try {
-      // Prefer exact alarms when possible.
-      final canExact = await androidImpl?.canScheduleExactNotifications() ?? true;
-      final mode = canExact
-          ? AndroidScheduleMode.exactAllowWhileIdle
-          : AndroidScheduleMode.inexactAllowWhileIdle;
-      await trySchedule(mode);
-    } on PlatformException catch (e) {
-      // Android 12+/14: exact alarms may be blocked -> fall back inexact.
-      // ignore: avoid_print
-      print('DEBUG: Notification schedule PlatformException: ${e.code} ${e.message}');
-      try {
-        await trySchedule(AndroidScheduleMode.inexactAllowWhileIdle);
-      } catch (e2) {
-        // Don't crash the app because scheduling failed.
-        // ignore: avoid_print
-        print('DEBUG: Notification schedule failed after fallback: $e2');
-        return;
-      }
-    } catch (e) {
-      // Don't crash the app because scheduling failed.
-      // ignore: avoid_print
-      print('DEBUG: Notification schedule failed: $e');
-      return;
-    }
-
-    // DEBUG LOGGING
-    // ignore: avoid_print
-    print(
-      'DEBUG: Notification scheduled for ${whenLocal.toIso8601String()} with content "$title" | "$body"',
+        whenLocal: scheduledDateTime,
+      ),
     );
   }
-}
 
+  static Future<void> showDebugNow({
+    required String key,
+    required String title,
+    required String body,
+  }) async {
+    await init();
+    if (!NotificationSettings.enabled.value) return;
+    if (!_nativeSupported) return;
+
+    final id = hashId(key);
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    debugPrint(
+      '🛠️ REMINDER_CHECK: showNow START tz.local=${tz.local.name} '
+      'now=${tz.TZDateTime.now(tz.local)} notifEnabled=${await android?.areNotificationsEnabled()}',
+    );
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      if (await _recentlyNotifiedSameId(id)) {
+        debugPrint('🛠️ REMINDER_CHECK: Dedupe skip showDebugNow id=$id');
+        return;
+      }
+    }
+
+    debugPrint(
+      '🛠️ REMINDER_CHECK: showNow id=$id tz.local=${tz.local.name} now=${tz.TZDateTime.now(tz.local)}',
+    );
+    await _plugin.show(
+      id,
+      title,
+      body,
+      _reminderDetails,
+    );
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _markNotified(id);
+    }
+  }
+}

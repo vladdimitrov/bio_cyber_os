@@ -2,7 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
@@ -28,6 +33,37 @@ final GlobalKey<NavigatorState> navigatorKey = AppNavigator.key;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('DEBUG: App started');
+
+  // Required for tz.TZDateTime scheduling on Android/iOS.
+  tzdata.initializeTimeZones();
+  // Hard force Sofia for deterministic local scheduling.
+  // (We still attempt to read native timezone below.)
+  tz.setLocalLocation(tz.getLocation('Europe/Sofia'));
+  debugPrint(
+    '🌍 TIMEZONE_SYNC: Local time is now ${tz.TZDateTime.now(tz.local)}',
+  );
+
+  // Force tz.local to match the device timezone (fixes tz.local returning UTC).
+  try {
+    final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timeZoneName));
+    // ignore: avoid_print
+    print('🛠️ DEBUG: Timezone set to $timeZoneName');
+    debugPrint('🛠️ DEBUG: tz.local.name=${tz.local.name}');
+    debugPrint(
+      '🛠️ DEBUG: tz.now=${tz.TZDateTime.now(tz.local)} offset=${tz.TZDateTime.now(tz.local).timeZoneOffset}',
+    );
+  } catch (e) {
+    debugPrint('DEBUG: FlutterTimezone.getLocalTimezone failed: $e');
+  }
+
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      await AndroidAlarmManager.initialize();
+    } catch (e) {
+      debugPrint('DEBUG: AndroidAlarmManager.initialize failed: $e');
+    }
+  }
 
   try {
     await AgentDebugLog.ensureInitialized();
@@ -99,6 +135,37 @@ Future<void> main() async {
     await NotificationService.init();
   } catch (e, st) {
     debugPrint('DEBUG: NotificationService.init failed: $e $st');
+  }
+
+  // Best-effort startup permissions for Android reminders.
+  // - POST_NOTIFICATIONS (Android 13+)
+  // - SCHEDULE_EXACT_ALARM (Android 12+ app-op)
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      final notif = await Permission.notification.status;
+      if (notif.isDenied || notif.isRestricted) {
+        await Permission.notification.request();
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Permission.notification request failed: $e');
+    }
+    try {
+      final overlay = await Permission.systemAlertWindow.status;
+      if (overlay.isDenied || overlay.isRestricted) {
+        await Permission.systemAlertWindow.request();
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Permission.systemAlertWindow request failed: $e');
+    }
+    try {
+      final exact = await Permission.scheduleExactAlarm.status;
+      if (exact.isDenied || exact.isRestricted) {
+        debugPrint('⚠️ WARNING: Exact Alarms DENIED.');
+        await Permission.scheduleExactAlarm.request();
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Permission.scheduleExactAlarm request failed: $e');
+    }
   }
   try {
     await MeasurementSettings.load();

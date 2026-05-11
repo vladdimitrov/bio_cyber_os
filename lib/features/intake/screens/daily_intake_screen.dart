@@ -13,6 +13,7 @@ import '../../../core/services/open_food_facts_service.dart';
 import '../../../core/supabase_error_message.dart';
 import '../../../core/supabase_log_date.dart';
 import '../../../core/widgets/reminder_section.dart';
+import '../../../core/widgets/schedule_selector.dart';
 import '../../food/screens/barcode_scanner_screen.dart';
 
 enum _IntakeType { supplement, medication }
@@ -1941,32 +1942,7 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
 
     final uid = _client.auth.currentUser?.id;
     if (uid == null) return;
-    final nowDay = widget.selectedDay;
-    final scheduledLocal = DateTime(
-      nowDay.year,
-      nowDay.month,
-      nowDay.day,
-      picked.time.hour,
-      picked.time.minute,
-    );
-    final scheduledIsoUtc = scheduledLocal.toUtc().toIso8601String();
-    final takenNow = !picked.planOnly;
-    final takenAtIso = takenNow
-        ? scheduledLocal.toUtc().toIso8601String()
-        : null;
-
-    DateTime? reminderLocal;
-    int? reminderOffsetMinutes;
-    if (picked.reminder.enabled) {
-      if (picked.reminder.mode == ReminderMode.atConsumptionTime) {
-        reminderLocal = scheduledLocal;
-        reminderOffsetMinutes = 0;
-      } else {
-        final off = picked.reminder.offsetMinutes;
-        reminderLocal = scheduledLocal.subtract(Duration(minutes: off));
-        reminderOffsetMinutes = off;
-      }
-    }
+    if (picked.targetDates.isEmpty) return;
 
     if (picked.reminder.enabled) {
       if (!mounted) return;
@@ -1976,92 +1952,101 @@ class _CombinedLibrarySheetState extends State<_CombinedLibrarySheet> {
     if (!mounted) return;
     final notifTitle = context.l10n.notificationTimeForIntake(item.name);
     final notifBody = context.l10n.reminderBody;
-    final targetDateStr = supabaseDateOnly(nowDay);
 
-    try {
-      if (item.type == _IntakeType.supplement) {
-        final payload = <String, dynamic>{
-          'user_id': uid,
-          'created_at': scheduledIsoUtc,
-          'supplement_id': item.id,
-          'amount_grams': picked.amount,
-          'meal_type': 'SUPPLEMENT',
-          'scheduled_at': scheduledIsoUtc,
-          'is_taken': takenNow,
-          'taken_at': takenAtIso,
-          'unit': picked.unit,
-          'schedule_block': picked.block,
-          'notes': picked.notes,
-        };
-        if (reminderLocal != null) {
-          payload['reminder_at'] = reminderLocal.toUtc().toIso8601String();
-          payload['reminder_offset_minutes'] = reminderOffsetMinutes;
-        }
-        final inserted = await _client
-            .from('daily_logs')
-            .insert(payload)
-            .select('id');
-        final rowsIns = (inserted as List).cast<Map<String, dynamic>>();
-        final newId = rowsIns.isEmpty
-            ? ''
-            : (rowsIns.first['id'] ?? '').toString().trim();
-        if (reminderLocal != null && newId.isNotEmpty) {
-          if (!mounted) return;
-          await NotificationService.scheduleByKey(
-            key: 'daily_logs:$newId',
-            title: notifTitle,
-            body: notifBody,
-            whenLocal: reminderLocal,
-            payload: {
-              'item_type': 'supplement',
-              'item_id': newId,
-              'target_date': targetDateStr,
-            },
-          );
-        }
-      } else {
-        final payload = <String, dynamic>{
-          'user_id': uid,
-          'created_at': scheduledIsoUtc,
-          'medication_id': item.id,
-          'scheduled_at': scheduledIsoUtc,
-          'dose_amount': picked.amount,
-          'unit_type': picked.unit,
-          'notes': picked.notes,
-          'schedule_block': picked.block,
-          'is_taken': takenNow,
-          'taken_at': takenAtIso,
-        };
-        if (reminderLocal != null) {
-          payload['reminder_at'] = reminderLocal.toUtc().toIso8601String();
-          payload['reminder_offset_minutes'] = reminderOffsetMinutes;
-        }
-        final inserted = await _client
-            .from('medication_logs')
-            .insert(payload)
-            .select('id');
-        final rowsMed = (inserted as List).cast<Map<String, dynamic>>();
-        final newId = rowsMed.isEmpty
-            ? ''
-            : (rowsMed.first['id'] ?? '').toString().trim();
-        if (reminderLocal != null && newId.isNotEmpty) {
-          if (!mounted) return;
-          await NotificationService.scheduleByKey(
-            key: 'medication_logs:$newId',
-            title: notifTitle,
-            body: notifBody,
-            whenLocal: reminderLocal,
-            payload: {
-              'item_type': 'medication',
-              'item_id': newId,
-              'target_date': targetDateStr,
-            },
-          );
+    final nowReal = DateTime.now();
+    final today = DateTime(nowReal.year, nowReal.month, nowReal.day);
+    final isSupplement = item.type == _IntakeType.supplement;
+    final table = isSupplement ? 'daily_logs' : 'medication_logs';
+    final itemTypeStr = isSupplement ? 'supplement' : 'medication';
+
+    final payloads = <Map<String, dynamic>>[];
+    final reminders = <({DateTime? whenLocal, DateTime targetDate})>[];
+
+    for (final d in picked.targetDates) {
+      final dateOnly = DateTime(d.year, d.month, d.day);
+      final scheduledLocal = DateTime(
+        dateOnly.year,
+        dateOnly.month,
+        dateOnly.day,
+        picked.time.hour,
+        picked.time.minute,
+      );
+      final scheduledIsoUtc = scheduledLocal.toUtc().toIso8601String();
+      final isToday = dateOnly.isAtSameMomentAs(today);
+      final takenNow = !picked.planOnly && isToday;
+      final takenAtIso = takenNow
+          ? scheduledLocal.toUtc().toIso8601String()
+          : null;
+
+      DateTime? reminderLocal;
+      int? reminderOffsetMinutes;
+      if (picked.reminder.enabled) {
+        if (picked.reminder.mode == ReminderMode.atConsumptionTime) {
+          reminderLocal = scheduledLocal;
+          reminderOffsetMinutes = 0;
+        } else {
+          final off = picked.reminder.offsetMinutes;
+          reminderLocal = scheduledLocal.subtract(Duration(minutes: off));
+          reminderOffsetMinutes = off;
         }
       }
+
+      final payload = <String, dynamic>{
+        'user_id': uid,
+        'created_at': scheduledIsoUtc,
+        'scheduled_at': scheduledIsoUtc,
+        'is_taken': takenNow,
+        'taken_at': takenAtIso,
+        'schedule_block': picked.block,
+        'notes': picked.notes,
+      };
+      if (isSupplement) {
+        payload['supplement_id'] = item.id;
+        payload['amount_grams'] = picked.amount;
+        payload['meal_type'] = 'SUPPLEMENT';
+        payload['unit'] = picked.unit;
+      } else {
+        payload['medication_id'] = item.id;
+        payload['dose_amount'] = picked.amount;
+        payload['unit_type'] = picked.unit;
+      }
+      if (reminderLocal != null) {
+        payload['reminder_at'] = reminderLocal.toUtc().toIso8601String();
+        payload['reminder_offset_minutes'] = reminderOffsetMinutes;
+      }
+
+      payloads.add(payload);
+      reminders.add((whenLocal: reminderLocal, targetDate: dateOnly));
+    }
+
+    try {
+      final inserted = await _client.from(table).insert(payloads).select('id');
+      final rows = (inserted as List).cast<Map<String, dynamic>>();
+
+      for (var i = 0; i < rows.length && i < reminders.length; i++) {
+        final r = reminders[i];
+        final when = r.whenLocal;
+        if (when == null) continue;
+        if (when.isBefore(DateTime.now())) continue;
+        final newId = (rows[i]['id'] ?? '').toString().trim();
+        if (newId.isEmpty) continue;
+        if (!mounted) return;
+        await NotificationService.scheduleByKey(
+          key: '$table:$newId',
+          title: notifTitle,
+          body: notifBody,
+          whenLocal: when,
+          payload: {
+            'item_type': itemTypeStr,
+            'item_id': newId,
+            'target_date': supabaseDateOnly(r.targetDate),
+          },
+        );
+      }
+
       if (!mounted) return;
       widget.onLogged();
-      Navigator.of(context).pop(); // close sheet
+      Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2308,6 +2293,11 @@ class _LogPick {
   final bool planOnly;
   final ReminderState reminder;
 
+  /// One row will be inserted per entry. Guaranteed non-empty by the
+  /// dialog (falls back to the dialog's base `day` when nothing is
+  /// explicitly scheduled).
+  final List<DateTime> targetDates;
+
   const _LogPick({
     required this.time,
     required this.amount,
@@ -2316,6 +2306,7 @@ class _LogPick {
     required this.notes,
     required this.planOnly,
     required this.reminder,
+    required this.targetDates,
   });
 }
 
@@ -2348,6 +2339,7 @@ class _LogPickDialogState extends State<_LogPickDialog> {
   String _block = 'MORNING';
   bool _planOnly = false;
   ReminderState _reminder = const ReminderState.disabled();
+  ScheduleSelection _schedule = const ScheduleSelection();
 
   static const _blocks = ['MORNING', 'AFTERNOON', 'EVENING', 'NIGHT'];
   static const _suppUnits = ['g', 'mg', 'ml', 'drops', 'capsules', 'pcs'];
@@ -2377,6 +2369,7 @@ class _LogPickDialogState extends State<_LogPickDialog> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('DEBUG: Attempting to render ScheduleSelector');
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
     const gold = AppColors.cyberGold;
@@ -2586,6 +2579,15 @@ class _LogPickDialogState extends State<_LogPickDialog> {
               state: _reminder,
               onChanged: (s) => setState(() => _reminder = s),
             ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ScheduleSelector(
+                selection: _schedule,
+                baseDate: widget.day,
+                onChanged: (s) => setState(() => _schedule = s),
+              ),
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: _notes,
@@ -2630,6 +2632,7 @@ class _LogPickDialogState extends State<_LogPickDialog> {
                 notes: _notes.text.trim(),
                 planOnly: _planOnly,
                 reminder: _reminder,
+                targetDates: _schedule.resolveDates(widget.day),
               ),
             );
           },
