@@ -9,19 +9,19 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'BIO_CYBER OS';
+  String get appTitle => 'Vitality Calendar';
 
   @override
-  String get navFuel => 'FUEL';
+  String get navFuel => 'FOOD';
 
   @override
-  String get navSupps => 'SUPPS';
+  String get navSupps => 'DAILY ESSENTIALS';
 
   @override
-  String get navMeds => 'MEDS';
+  String get navMeds => 'MY LIST';
 
   @override
-  String get navVitals => 'VITALS';
+  String get navVitals => 'CHECK-IN';
 
   @override
   String get navReports => 'REPORTS';
@@ -33,16 +33,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navConfig => 'CONFIG';
 
   @override
-  String get screenFuelLog => 'FUEL LOG';
+  String get screenFuelLog => 'FOOD LOG';
 
   @override
-  String get screenSupps => 'SUPPS';
+  String get screenSupps => 'DAILY ESSENTIALS';
 
   @override
-  String get screenMeds => 'MEDS';
+  String get screenMeds => 'MY LIST';
 
   @override
-  String get screenVitalsSymptoms => 'VITALS & SYMPTOMS';
+  String get checkInTitle => 'CHECK-IN';
 
   @override
   String get screenReports => 'REPORTS';
@@ -123,7 +123,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get blockNight => 'NIGHT';
 
   @override
-  String get nutritionDailyProgress => 'DAILY NUTRITION PROGRESS';
+  String get nutritionDailyProgress => 'DAILY FOOD PROGRESS';
 
   @override
   String get nutritionChartLegend =>
@@ -224,6 +224,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get searchHint => 'Search…';
+
+  @override
+  String get recipeIngredientSearchHint => 'Search ingredients...';
+
+  @override
+  String get searchClearTooltip => 'Clear search';
+
+  @override
+  String get scanBarcodeTooltip => 'Scan barcode';
+
+  @override
+  String get recipeBarcodeNotFound => 'No library item matches that barcode.';
+
+  @override
+  String get recipeBarcodeWrongKind =>
+      'That barcode is not an ingredient. Use an ingredient from your library.';
+
+  @override
+  String recipeIngredientBarcodeAdded(String name, String grams) {
+    return 'Added $name ($grams g).';
+  }
 
   @override
   String get noItemsFound => 'No items found';
@@ -460,7 +481,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get msgValidAmount => 'Enter a valid amount';
 
   @override
-  String get msgValidDose => 'Enter a valid dose';
+  String get msgValidDose => 'Enter a valid amount';
 
   @override
   String get msgLogged => 'Logged.';
@@ -605,10 +626,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get numberOfConsecutiveDays => 'Number of consecutive days';
 
   @override
-  String get saveAsDefaultDoseLibrary => 'Save as default dose in Library';
+  String get saveAsDefaultDoseLibrary => 'Save as default amount in Library';
 
   @override
-  String get addSupplementTitle => 'ADD SUPPLEMENT';
+  String get addSupplementTitle => 'ADD DAILY ESSENTIAL';
 
   @override
   String get amountLabelShort => 'Amount';
@@ -655,41 +676,41 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get supsLogIntakeTitle => 'LOG SUPPLEMENT INTAKE';
+  String get supsLogIntakeTitle => 'LOG DAILY ESSENTIAL';
 
   @override
-  String get medsLogIntakeTitle => 'LOG MEDICATION INTAKE';
+  String get medsLogIntakeTitle => 'LOG MY LIST ITEM';
 
   @override
-  String get supsEditLogTitle => 'EDIT SUPPLEMENT LOG';
+  String get supsEditLogTitle => 'EDIT DAILY ESSENTIAL LOG';
 
   @override
-  String get medsEditLogTitle => 'EDIT MEDICATION LOG';
+  String get medsEditLogTitle => 'EDIT MY LIST LOG';
 
   @override
-  String get supsNewSupplementTitle => 'NEW SUPPLEMENT';
+  String get supsNewSupplementTitle => 'NEW DAILY ESSENTIAL';
 
   @override
-  String get medsNewMedicationTitle => 'ADD MEDICATION';
+  String get medsNewMedicationTitle => 'ADD TO MY LIST';
 
   @override
   String get medsMedicationName => 'Name';
 
   @override
   String logSupplementBlock(String block) {
-    return 'LOG SUPPLEMENT — $block';
+    return 'LOG DAILY ESSENTIAL — $block';
   }
 
   @override
   String logMedicationBlock(String block) {
-    return 'LOG MEDICATION — $block';
+    return 'LOG MY LIST — $block';
   }
 
   @override
-  String get defaultSupplementName => 'Supplement';
+  String get defaultSupplementName => 'Daily essential';
 
   @override
-  String get defaultMedicationName => 'Medication';
+  String get defaultMedicationName => 'List item';
 
   @override
   String notificationReminderSuppIntake(String name) {
@@ -706,11 +727,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String libraryDefaultDose(String dose, String unit) {
-    return 'Default $dose $unit (tap to edit at log time)';
+    return 'Default $dose $unit amount (tap to edit at log time)';
   }
 
   @override
-  String get libraryNoDefaultDose => 'No default dose (tap to enter now)';
+  String get libraryNoDefaultDose => 'No default amount (tap to enter now)';
 
   @override
   String get dialogSaving => '…';
@@ -727,5 +748,112 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String notificationTimeForIntake(String name) {
     return 'Time for your intake: $name';
+  }
+
+  @override
+  String get foodTitle => 'FOOD LOG';
+
+  @override
+  String get todayTitle => 'TODAY';
+
+  @override
+  String get onTrackStatus => 'ON TRACK';
+
+  @override
+  String get energyLabel => 'Energy';
+
+  @override
+  String get focusLabel => 'Focus';
+
+  @override
+  String get disclaimer =>
+      'Vitality Calendar is for personal tracking only. Not medical advice. Consult a doctor for health decisions.';
+
+  @override
+  String get checkInDialogTitle => 'CHECK-IN';
+
+  @override
+  String get checkInDefaultTag => 'Check-in';
+
+  @override
+  String get moodLabel => 'Mood';
+
+  @override
+  String get sleepHoursLabel => 'Sleep hours';
+
+  @override
+  String get advancedMeasurementsTitle => 'Measurements';
+
+  @override
+  String get moreOptionsTitle => 'More options';
+
+  @override
+  String get feelTagLabel => 'Tag';
+
+  @override
+  String get addFeelTagTitle => 'NEW TAG';
+
+  @override
+  String get feelTagNameLabel => 'Name';
+
+  @override
+  String get addFeelTagListItem => '+ Add new tag';
+
+  @override
+  String get addFeelTagTooltip => 'Add new tag';
+
+  @override
+  String get intensityLabel => 'Level';
+
+  @override
+  String get bodyTempLabel => 'Temp (°C)';
+
+  @override
+  String get pulseLabel => 'Pulse (BPM)';
+
+  @override
+  String get bpLabel => 'BP (120/80)';
+
+  @override
+  String get spo2Label => 'Oxygen (%)';
+
+  @override
+  String get checkInNoLogsToday =>
+      'Nothing logged for this day yet. Tap + to add.';
+
+  @override
+  String get snackUndo => 'UNDO';
+
+  @override
+  String get libraryLabelScanTitle => 'LABEL SCAN';
+
+  @override
+  String get libraryNoFlagsMatched => 'No flags matched';
+
+  @override
+  String get libraryTabIngredients => 'INGREDIENTS';
+
+  @override
+  String get libraryTabRecipes => 'RECIPES';
+
+  @override
+  String get librarySearchDailyEssentialsHint => 'Search daily essentials…';
+
+  @override
+  String get libraryDeleteDailyEssentialTitle => 'REMOVE DAILY ESSENTIAL';
+
+  @override
+  String moodLineShort(int rank) {
+    return 'Mood $rank/4';
+  }
+
+  @override
+  String sleepLineShort(String hours) {
+    return 'Sleep $hours h';
+  }
+
+  @override
+  String failedFeelList(String details) {
+    return 'Could not load tags: $details';
   }
 }

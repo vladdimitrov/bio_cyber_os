@@ -1,17 +1,17 @@
 {
   "@@locale": "en",
-  "appTitle": "BIO_CYBER OS",
-  "navFuel": "FUEL",
-  "navSupps": "SUPPS",
-  "navMeds": "MEDS",
-  "navVitals": "VITALS",
+  "appTitle": "Vitality Calendar",
+  "navFuel": "FOOD",
+  "navSupps": "DAILY ESSENTIALS",
+  "navMeds": "MY LIST",
+  "navVitals": "CHECK-IN",
   "navReports": "REPORTS",
   "navLibrary": "LIBRARY",
   "navConfig": "CONFIG",
-  "screenFuelLog": "FUEL LOG",
-  "screenSupps": "SUPPS",
-  "screenMeds": "MEDS",
-  "screenVitalsSymptoms": "VITALS & SYMPTOMS",
+  "screenFuelLog": "FOOD LOG",
+  "screenSupps": "DAILY ESSENTIALS",
+  "screenMeds": "MY LIST",
+  "checkInTitle": "CHECK-IN",
   "screenReports": "REPORTS",
   "screenLibrary": "LIBRARY",
   "screenConfig": "CONFIG",
@@ -38,7 +38,7 @@
   "blockAfternoon": "AFTERNOON",
   "blockEvening": "EVENING",
   "blockNight": "NIGHT",
-  "nutritionDailyProgress": "DAILY NUTRITION PROGRESS",
+  "nutritionDailyProgress": "DAILY FOOD PROGRESS",
   "nutritionChartLegend": "■ solid = consumed  ·  ░ dashed = planned extra  ·  │ goal = daily target",
   "nutritionProtein": "PROTEIN",
   "nutritionCarbs": "CARBS",
@@ -72,6 +72,18 @@
   "number": "Number",
   "requiredField": "Required",
   "searchHint": "Search…",
+  "recipeIngredientSearchHint": "Search ingredients...",
+  "searchClearTooltip": "Clear search",
+  "scanBarcodeTooltip": "Scan barcode",
+  "recipeBarcodeNotFound": "No library item matches that barcode.",
+  "recipeBarcodeWrongKind": "That barcode is not an ingredient. Use an ingredient from your library.",
+  "recipeIngredientBarcodeAdded": "Added {name} ({grams} g).",
+  "@recipeIngredientBarcodeAdded": {
+    "placeholders": {
+      "name": {"type": "String"},
+      "grams": {"type": "String"}
+    }
+  },
   "noItemsFound": "No items found",
   "unknown": "Unknown",
   "missed": "MISSED",
@@ -189,7 +201,7 @@
   "msgMealMarkedConsumed": "Meal marked as consumed!",
   "msgValidAmountGrams": "Enter a valid amount in grams",
   "msgValidAmount": "Enter a valid amount",
-  "msgValidDose": "Enter a valid dose",
+  "msgValidDose": "Enter a valid amount",
   "msgLogged": "Logged.",
   "msgLogDeleted": "Log deleted.",
   "msgLogUpdated": "Log updated!",
@@ -279,8 +291,8 @@
   },
   "amountTaken": "Amount Taken",
   "numberOfConsecutiveDays": "Number of consecutive days",
-  "saveAsDefaultDoseLibrary": "Save as default dose in Library",
-  "addSupplementTitle": "ADD SUPPLEMENT",
+  "saveAsDefaultDoseLibrary": "Save as default amount in Library",
+  "addSupplementTitle": "ADD DAILY ESSENTIAL",
   "amountLabelShort": "Amount",
   "fuelScheduleMultiDays": "Schedule for multiple days",
   "fuelRepeatDaysLabel": "Enter number of days",
@@ -313,27 +325,27 @@
       "name": {"type": "String"}
     }
   },
-  "supsLogIntakeTitle": "LOG SUPPLEMENT INTAKE",
-  "medsLogIntakeTitle": "LOG MEDICATION INTAKE",
-  "supsEditLogTitle": "EDIT SUPPLEMENT LOG",
-  "medsEditLogTitle": "EDIT MEDICATION LOG",
-  "supsNewSupplementTitle": "NEW SUPPLEMENT",
-  "medsNewMedicationTitle": "ADD MEDICATION",
+  "supsLogIntakeTitle": "LOG DAILY ESSENTIAL",
+  "medsLogIntakeTitle": "LOG MY LIST ITEM",
+  "supsEditLogTitle": "EDIT DAILY ESSENTIAL LOG",
+  "medsEditLogTitle": "EDIT MY LIST LOG",
+  "supsNewSupplementTitle": "NEW DAILY ESSENTIAL",
+  "medsNewMedicationTitle": "ADD TO MY LIST",
   "medsMedicationName": "Name",
-  "logSupplementBlock": "LOG SUPPLEMENT — {block}",
+  "logSupplementBlock": "LOG DAILY ESSENTIAL — {block}",
   "@logSupplementBlock": {
     "placeholders": {
       "block": {"type": "String"}
     }
   },
-  "logMedicationBlock": "LOG MEDICATION — {block}",
+  "logMedicationBlock": "LOG MY LIST — {block}",
   "@logMedicationBlock": {
     "placeholders": {
       "block": {"type": "String"}
     }
   },
-  "defaultSupplementName": "Supplement",
-  "defaultMedicationName": "Medication",
+  "defaultSupplementName": "Daily essential",
+  "defaultMedicationName": "List item",
   "notificationReminderSuppIntake": "Reminder: {name} intake.",
   "@notificationReminderSuppIntake": {
     "placeholders": {
@@ -347,14 +359,14 @@
     }
   },
   "libraryAddNew": "+ Add New to Library",
-  "libraryDefaultDose": "Default {dose} {unit} (tap to edit at log time)",
+  "libraryDefaultDose": "Default {dose} {unit} amount (tap to edit at log time)",
   "@libraryDefaultDose": {
     "placeholders": {
       "dose": {"type": "String"},
       "unit": {"type": "String"}
     }
   },
-  "libraryNoDefaultDose": "No default dose (tap to enter now)",
+  "libraryNoDefaultDose": "No default amount (tap to enter now)",
   "dialogSaving": "…",
   "intakeAddModeLogNow": "LOG NOW",
   "intakeAddModePlan": "PLAN",
@@ -363,6 +375,54 @@
   "@notificationTimeForIntake": {
     "placeholders": {
       "name": {"type": "String"}
+    }
+  },
+  "foodTitle": "FOOD LOG",
+  "todayTitle": "TODAY",
+  "onTrackStatus": "ON TRACK",
+  "energyLabel": "Energy",
+  "focusLabel": "Focus",
+  "disclaimer": "Vitality Calendar is for personal tracking only. Not medical advice. Consult a doctor for health decisions.",
+  "checkInDialogTitle": "CHECK-IN",
+  "checkInDefaultTag": "Check-in",
+  "moodLabel": "Mood",
+  "sleepHoursLabel": "Sleep hours",
+  "advancedMeasurementsTitle": "Measurements",
+  "moreOptionsTitle": "More options",
+  "feelTagLabel": "Tag",
+  "addFeelTagTitle": "NEW TAG",
+  "feelTagNameLabel": "Name",
+  "addFeelTagListItem": "+ Add new tag",
+  "addFeelTagTooltip": "Add new tag",
+  "intensityLabel": "Level",
+  "bodyTempLabel": "Temp (°C)",
+  "pulseLabel": "Pulse (BPM)",
+  "bpLabel": "BP (120/80)",
+  "spo2Label": "Oxygen (%)",
+  "checkInNoLogsToday": "Nothing logged for this day yet. Tap + to add.",
+  "snackUndo": "UNDO",
+  "libraryLabelScanTitle": "LABEL SCAN",
+  "libraryNoFlagsMatched": "No flags matched",
+  "libraryTabIngredients": "INGREDIENTS",
+  "libraryTabRecipes": "RECIPES",
+  "librarySearchDailyEssentialsHint": "Search daily essentials…",
+  "libraryDeleteDailyEssentialTitle": "REMOVE DAILY ESSENTIAL",
+  "moodLineShort": "Mood {rank}/4",
+  "@moodLineShort": {
+    "placeholders": {
+      "rank": {"type": "int"}
+    }
+  },
+  "sleepLineShort": "Sleep {hours} h",
+  "@sleepLineShort": {
+    "placeholders": {
+      "hours": {"type": "String"}
+    }
+  },
+  "failedFeelList": "Could not load tags: {details}",
+  "@failedFeelList": {
+    "placeholders": {
+      "details": {"type": "String"}
     }
   }
 }

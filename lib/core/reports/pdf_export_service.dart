@@ -154,7 +154,7 @@ class PdfExportService {
           widgets.add(pw.SizedBox(height: 6));
           widgets.add(
             pw.Text(
-              'Use the lines below for symptoms, sleep, or other observations.',
+              'Use the lines below for sleep, mood, or other notes.',
               style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey800),
             ),
           );

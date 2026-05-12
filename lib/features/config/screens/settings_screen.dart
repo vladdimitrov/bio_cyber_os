@@ -692,6 +692,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final l10n = AppLocalizations.of(context)!;
     final bmi = _bmiDisplay(l10n);
     const saveBarHeight = 86.0;
+    final disclaimerStyle = TextStyle(
+      color: cyan.withValues(alpha: 0.72),
+      fontFamily: 'monospace',
+      fontSize: 11,
+      height: 1.35,
+    );
 
     return Scaffold(
       backgroundColor: bg,
@@ -785,6 +791,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            Text(
+                              l10n.disclaimer,
+                              style: disclaimerStyle,
+                            ),
+                            const SizedBox(height: 14),
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton(

@@ -895,7 +895,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
         ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(
             record.recipeId.isNotEmpty ? Icons.outdoor_grill : Icons.egg,
@@ -906,8 +906,10 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Text(
@@ -922,7 +924,7 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          'ПРОПУСНАТО',
+                          l10n.missed,
                           style: const TextStyle(
                             color: Colors.red,
                             fontFamily: 'monospace',
@@ -974,31 +976,57 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
                 ),
               ),
             ),
+            const SizedBox(width: 4),
             IconButton(
               onPressed: () async => _editMealFlow(record),
-              icon: const Icon(Icons.edit_outlined, size: 20),
-              color: const Color(0xFF00F3FF),
+              icon: const Icon(Icons.edit, size: 22),
+              color: AppColors.cyberGold,
               tooltip: l10n.edit,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              padding: EdgeInsets.zero,
+              style: IconButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                tapTargetSize: MaterialTapTargetSize.padded,
+                padding: const EdgeInsets.all(8),
+              ),
             ),
+            const SizedBox(width: 2),
             IconButton(
               onPressed: () async =>
                   _deleteLog(record.id, removedWasPlanned: true),
-              icon: const Icon(Icons.delete_outline, size: 20),
+              icon: const Icon(Icons.delete_outline, size: 22),
               color: const Color(0xFF00F3FF),
               tooltip: l10n.delete,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              padding: EdgeInsets.zero,
+              style: IconButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                tapTargetSize: MaterialTapTargetSize.padded,
+                padding: const EdgeInsets.all(8),
+              ),
             ),
-          ] else
+          ] else ...[
+            IconButton(
+              onPressed: () async => _editMealFlow(record),
+              icon: const Icon(Icons.edit, size: 22),
+              color: AppColors.cyberGold,
+              tooltip: l10n.edit,
+              style: IconButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                tapTargetSize: MaterialTapTargetSize.padded,
+                padding: const EdgeInsets.all(8),
+              ),
+            ),
+            const SizedBox(width: 2),
             IconButton(
               onPressed: () async =>
                   _deleteLog(record.id, removedWasPlanned: false),
-              icon: const Icon(Icons.delete_outline),
+              icon: const Icon(Icons.delete_outline, size: 22),
               color: const Color(0xFF00F3FF),
               tooltip: l10n.delete,
+              style: IconButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                tapTargetSize: MaterialTapTargetSize.padded,
+                padding: const EdgeInsets.all(8),
+              ),
             ),
+          ],
         ],
       ),
     );
@@ -1314,7 +1342,14 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
                     ),
                   ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        12,
+                        16,
+                        12 +
+                            MediaQuery.paddingOf(context).bottom +
+                            kBottomNavigationBarHeight,
+                      ),
                       child: Column(
                         children: [
                         if (_dailyRecords.isEmpty)
@@ -1366,13 +1401,15 @@ class _FuelDashboardScreenState extends State<FuelDashboardScreen>
                           },
                           style: OutlinedButton.styleFrom(
                             foregroundColor: cyan,
+                            backgroundColor: const Color(0xFF050510),
                             side: const BorderSide(color: cyan, width: 1),
                             shape: const RoundedRectangleBorder(
                               borderRadius: BorderRadius.zero,
                             ),
+                            minimumSize: const Size(double.infinity, 48),
                             padding: const EdgeInsets.symmetric(
                               vertical: 14,
-                              horizontal: 8,
+                              horizontal: 12,
                             ),
                           ),
                           child: Text(
@@ -1607,13 +1644,16 @@ class _MealLogSectionState extends State<_MealLogSection> {
                   )
                 else ...[
                   if (planned.isNotEmpty) ...[
-                    Text(
-                      l10n.plannedUpper,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.0,
-                        color: Color(0xFF88CCFF),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 32),
+                      child: Text(
+                        l10n.plannedUpper,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.0,
+                          color: Color(0xFF88CCFF),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -1625,12 +1665,16 @@ class _MealLogSectionState extends State<_MealLogSection> {
                     if (consumed.isNotEmpty) const SizedBox(height: 8),
                   ],
                   if (consumed.isNotEmpty) ...[
-                    Text(
-                      l10n.consumedUpper,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.0,
+                    Padding(
+                      padding: const EdgeInsets.only(left: 32),
+                      child: Text(
+                        l10n.consumedUpper,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.0,
+                          color: AppColors.cyberGold,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -2017,6 +2061,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
   TimeOfDay? _editSpecificReminder;
   final _editMinutesBeforeCtrl = TextEditingController(text: '5');
   int _editMinutesBefore = 5;
+  bool _barcodeBusy = false;
 
   @override
   void initState() {
@@ -2059,49 +2104,73 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
   }
 
   Future<void> _openBarcodeFlow() async {
-    if (!mounted) return;
-    final res = await BarcodeScannerScreen.pushForResult(
-      context,
-      pickCodeOnly: true,
-    );
-    final barcode = (res?['barcode'] ?? '').toString().trim();
-    if (barcode.isEmpty || !mounted) return;
-
+    if (!mounted || _barcodeBusy) return;
+    setState(() => _barcodeBusy = true);
     try {
-      final prod = await _fetchOpenFoodFacts(barcode);
-      if (prod == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Product not found. Please enter manually.'),
-          ),
-        );
-        return;
+      final res = await BarcodeScannerScreen.pushForResult(
+        context,
+        pickCodeOnly: true,
+      );
+      final barcode = (res?['barcode'] ?? '').toString().trim();
+      if (barcode.isEmpty || !mounted) return;
+
+      try {
+        final row = await _client
+            .from('ingredients')
+            .select(
+              'id,name,protein_per_100g,carbs_per_100g,fat_per_100g,calories_per_100g,is_gluten_free,glycemic_index,allergen_level',
+            )
+            .eq('barcode', barcode)
+            .maybeSingle();
+        if (row != null && mounted) {
+          final pick = _foodPickFromIngredientRow(
+            Map<String, dynamic>.from(row),
+          );
+          _controller.text = pick.name;
+          _applyFilter(pick.name);
+          await _handleFoodPickTap(pick);
+          return;
+        }
+      } catch (_) {
+        // Fall through to Open Food Facts / manual path.
       }
 
-      if (!mounted) return;
-      final created = await showDialog<_FoodPick?>(
-        context: context,
-        builder: (_) => _OffAddIngredientDialog(product: prod),
-      );
-      if (created == null) return;
+      try {
+        final prod = await _fetchOpenFoodFacts(barcode);
+        if (prod == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Product not found. Please enter manually.'),
+            ),
+          );
+          return;
+        }
 
-      // Update local list and focus search.
-      await _loadAll();
-      if (!mounted) return;
-      _controller.text = created.name;
-      _applyFilter(created.name);
+        if (!mounted) return;
+        final created = await showDialog<_FoodPick?>(
+          context: context,
+          builder: (_) => _OffAddIngredientDialog(product: prod),
+        );
+        if (created == null) return;
 
-      // Immediately continue into the normal grams/reminder flow.
-      await _handleFoodPickTap(created);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Barcode lookup failed: $e'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+        await _loadAll();
+        if (!mounted) return;
+        _controller.text = created.name;
+        _applyFilter(created.name);
+
+        await _handleFoodPickTap(created);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Barcode lookup failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _barcodeBusy = false);
     }
   }
 
@@ -2745,17 +2814,17 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
 
     return Scaffold(
       backgroundColor: bg,
-      body: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: cyan, width: 2)),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -2780,6 +2849,41 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                         fontSize: 13,
                       ),
                       prefixIcon: const Icon(Icons.search),
+                      prefixIconColor: cyan,
+                      suffixIcon: _barcodeBusy
+                          ? const Padding(
+                              padding: EdgeInsetsDirectional.only(
+                                end: 10,
+                                start: 4,
+                              ),
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.cyberGold,
+                                ),
+                              ),
+                            )
+                          : IconButton(
+                              tooltip: loc.scanBarcodeTooltip,
+                              onPressed: _openBarcodeFlow,
+                              visualDensity: VisualDensity.compact,
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(40, 40),
+                                padding: const EdgeInsets.all(6),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 40,
+                                minHeight: 40,
+                                maxWidth: 44,
+                                maxHeight: 44,
+                              ),
+                              iconSize: 22,
+                              icon: const Icon(Icons.qr_code_scanner),
+                              color: AppColors.cyberGold,
+                            ),
                       enabledBorder: const OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
                         borderSide: BorderSide(color: cyan, width: 1),
@@ -2790,13 +2894,6 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: 'Scan barcode',
-                  onPressed: _openBarcodeFlow,
-                  icon: const Icon(Icons.qr_code_scanner),
-                  color: AppColors.cyberGold,
                 ),
               ],
             ),
@@ -2879,8 +2976,7 @@ class _FoodLogSheetState extends State<_FoodLogSheet> {
                     },
                   ),
           ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -3170,6 +3266,42 @@ class _FoodPick {
           fatPer100g,
           caloriesPer100g,
         );
+}
+
+_FoodPick _foodPickFromIngredientRow(Map<String, dynamic> r) {
+  double asDouble(dynamic v) {
+    if (v == null) return 0.0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0.0;
+  }
+
+  int? asIntOrNull(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toInt();
+    final s = v.toString().trim();
+    if (s.isEmpty) return null;
+    return int.tryParse(s);
+  }
+
+  bool asBool(dynamic v) {
+    if (v == null) return false;
+    if (v is bool) return v;
+    final s = v.toString().trim().toLowerCase();
+    return s == 'true' || s == 't' || s == '1' || s == 'yes';
+  }
+
+  return _FoodPick(
+    id: (r['id'] ?? '').toString(),
+    name: (r['name'] ?? '').toString(),
+    type: _FoodType.ingredient,
+    proteinPer100g: asDouble(r['protein_per_100g']),
+    carbsPer100g: asDouble(r['carbs_per_100g']),
+    fatPer100g: asDouble(r['fat_per_100g']),
+    caloriesPer100g: asDouble(r['calories_per_100g']),
+    isGlutenFree: asBool(r['is_gluten_free']),
+    glycemicIndex: asIntOrNull(r['glycemic_index']),
+    allergenLevel: Ingredient.parseAllergenLevel(r['allergen_level']),
+  );
 }
 
 class _Totals {

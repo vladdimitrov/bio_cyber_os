@@ -12,11 +12,11 @@ class VitalityNotificationCopy {
   static String _categoryName(VitalityCalendarCategory c) {
     switch (c) {
       case VitalityCalendarCategory.fuel:
-        return 'Fuel';
+        return 'Food';
       case VitalityCalendarCategory.supplements:
-        return 'Supplements';
+        return 'Daily essentials';
       case VitalityCalendarCategory.medications:
-        return 'Medications';
+        return 'My list';
     }
   }
 
@@ -27,11 +27,11 @@ class VitalityNotificationCopy {
       case VitalityCalendarCategory.supplements:
         return '💊 Take: ';
       case VitalityCalendarCategory.medications:
-        return '💉 Dose: ';
+        return '💉 Amount: ';
     }
   }
 
-  /// e.g. `Vitality Calendar: Fuel`
+  /// e.g. `Vitality Calendar: Food`
   static String buildTitle(VitalityCalendarCategory category) {
     return 'Vitality Calendar: ${_categoryName(category)}';
   }

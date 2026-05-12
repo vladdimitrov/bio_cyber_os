@@ -9,19 +9,19 @@ class AppLocalizationsBg extends AppLocalizations {
   AppLocalizationsBg([String locale = 'bg']) : super(locale);
 
   @override
-  String get appTitle => 'BIO_CYBER OS';
+  String get appTitle => 'Vitality Calendar';
 
   @override
-  String get navFuel => 'ГОРИВО';
+  String get navFuel => 'ХРАНА';
 
   @override
-  String get navSupps => 'ДОБАВКИ';
+  String get navSupps => 'ЕЖЕДНЕВНИ';
 
   @override
-  String get navMeds => 'ЛЕКАРСТВА';
+  String get navMeds => 'МОЯ СПИСЪК';
 
   @override
-  String get navVitals => 'ПОКАЗАТЕЛИ';
+  String get navVitals => 'ОТМЕТКА';
 
   @override
   String get navReports => 'ОТЧЕТИ';
@@ -33,16 +33,16 @@ class AppLocalizationsBg extends AppLocalizations {
   String get navConfig => 'НАСТРОЙКИ';
 
   @override
-  String get screenFuelLog => 'ДНЕВНИК — ГОРИВО';
+  String get screenFuelLog => 'ДНЕВНИК — ХРАНА';
 
   @override
-  String get screenSupps => 'ДОБАВКИ';
+  String get screenSupps => 'ЕЖЕДНЕВНИ';
 
   @override
-  String get screenMeds => 'ЛЕКАРСТВА';
+  String get screenMeds => 'МОЯ СПИСЪК';
 
   @override
-  String get screenVitalsSymptoms => 'ПОКАЗАТЕЛИ И СИМПТОМИ';
+  String get checkInTitle => 'ОТМЕТКА';
 
   @override
   String get screenReports => 'ОТЧЕТИ';
@@ -123,7 +123,7 @@ class AppLocalizationsBg extends AppLocalizations {
   String get blockNight => 'НОЩ';
 
   @override
-  String get nutritionDailyProgress => 'ДНЕВЕН ХРАНИТЕЛЕН ПРОГРЕС';
+  String get nutritionDailyProgress => 'ДНЕВЕН ПРОГРЕС — ХРАНА';
 
   @override
   String get nutritionChartLegend =>
@@ -224,6 +224,28 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String get searchHint => 'Търсене…';
+
+  @override
+  String get recipeIngredientSearchHint => 'Търси съставки…';
+
+  @override
+  String get searchClearTooltip => 'Изчисти търсенето';
+
+  @override
+  String get scanBarcodeTooltip => 'Сканирай баркод';
+
+  @override
+  String get recipeBarcodeNotFound =>
+      'Няма съвпадение в библиотеката за този баркод.';
+
+  @override
+  String get recipeBarcodeWrongKind =>
+      'Този баркод не е съставка. Използвай баркод на съставка от библиотеката.';
+
+  @override
+  String recipeIngredientBarcodeAdded(String name, String grams) {
+    return 'Добавено: $name ($grams г).';
+  }
 
   @override
   String get noItemsFound => 'Няма намерени записи';
@@ -466,7 +488,7 @@ class AppLocalizationsBg extends AppLocalizations {
   String get msgValidAmount => 'Въведете валидно количество';
 
   @override
-  String get msgValidDose => 'Въведете валидна доза';
+  String get msgValidDose => 'Въведете валидно количество';
 
   @override
   String get msgLogged => 'Записано.';
@@ -528,11 +550,11 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String get analyticsSuppAdherenceTitle =>
-      'СПАЗВАНЕ НА ДОБАВКИ (прието срещу пропуснато)';
+      'ЕЖЕДНЕВНИ — прието срещу пропуснато';
 
   @override
   String get analyticsMedAdherenceTitle =>
-      'СПАЗВАНЕ НА ЛЕКАРСТВА (прието срещу пропуснато)';
+      'МОЯ СПИСЪК — прието срещу пропуснато';
 
   @override
   String get analyticsSourceDailyLogsShort =>
@@ -611,10 +633,10 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String get saveAsDefaultDoseLibrary =>
-      'Запази като стандартна доза в библиотеката';
+      'Запази като стандартно количество в библиотеката';
 
   @override
-  String get addSupplementTitle => 'ДОБАВИ ДОБАВКА';
+  String get addSupplementTitle => 'ДОБАВИ ЕЖЕДНЕВНО';
 
   @override
   String get amountLabelShort => 'Количество';
@@ -661,41 +683,41 @@ class AppLocalizationsBg extends AppLocalizations {
   }
 
   @override
-  String get supsLogIntakeTitle => 'ЗАПИС НА ПРИЕМ НА ДОБАВКА';
+  String get supsLogIntakeTitle => 'ЗАПИС — ЕЖЕДНЕВНО';
 
   @override
-  String get medsLogIntakeTitle => 'ЗАПИС НА ПРИЕМ НА ЛЕКАРСТВО';
+  String get medsLogIntakeTitle => 'ЗАПИС — МОЯ СПИСЪК';
 
   @override
-  String get supsEditLogTitle => 'РЕДАКЦИЯ НА ЗАПИС — ДОБАВКА';
+  String get supsEditLogTitle => 'РЕДАКЦИЯ — ЕЖЕДНЕВНО';
 
   @override
-  String get medsEditLogTitle => 'РЕДАКЦИЯ НА ЗАПИС — ЛЕКАРСТВО';
+  String get medsEditLogTitle => 'РЕДАКЦИЯ — МОЯ СПИСЪК';
 
   @override
-  String get supsNewSupplementTitle => 'НОВА ДОБАВКА';
+  String get supsNewSupplementTitle => 'НОВО ЕЖЕДНЕВНО';
 
   @override
-  String get medsNewMedicationTitle => 'ДОБАВИ ЛЕКАРСТВО';
+  String get medsNewMedicationTitle => 'ДОБАВИ В СПИСЪКА';
 
   @override
   String get medsMedicationName => 'Име';
 
   @override
   String logSupplementBlock(String block) {
-    return 'ДОБАВКА — $block';
+    return 'ЕЖЕДНЕВНО — $block';
   }
 
   @override
   String logMedicationBlock(String block) {
-    return 'ЛЕКАРСТВО — $block';
+    return 'МОЯ СПИСЪК — $block';
   }
 
   @override
-  String get defaultSupplementName => 'Добавка';
+  String get defaultSupplementName => 'Ежедневно';
 
   @override
-  String get defaultMedicationName => 'Лекарство';
+  String get defaultMedicationName => 'Елемент от списъка';
 
   @override
   String notificationReminderSuppIntake(String name) {
@@ -712,12 +734,12 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String libraryDefaultDose(String dose, String unit) {
-    return 'По подразбиране $dose $unit (редактирайте при запис)';
+    return 'По подразбиране $dose $unit количество (редактирайте при запис)';
   }
 
   @override
   String get libraryNoDefaultDose =>
-      'Няма доза по подразбиране (въведете при запис)';
+      'Няма количество по подразбиране (въведете при запис)';
 
   @override
   String get dialogSaving => '…';
@@ -735,5 +757,112 @@ class AppLocalizationsBg extends AppLocalizations {
   @override
   String notificationTimeForIntake(String name) {
     return 'Време за прием: $name';
+  }
+
+  @override
+  String get foodTitle => 'ДНЕВНИК — ХРАНА';
+
+  @override
+  String get todayTitle => 'ДНЕС';
+
+  @override
+  String get onTrackStatus => 'ПО ПЛАН';
+
+  @override
+  String get energyLabel => 'Енергия';
+
+  @override
+  String get focusLabel => 'Фокус';
+
+  @override
+  String get disclaimer =>
+      'Vitality Calendar е само за личен запис. Не е медицински съвет. Консултирай се с лекар.';
+
+  @override
+  String get checkInDialogTitle => 'ОТМЕТКА';
+
+  @override
+  String get checkInDefaultTag => 'Check-in';
+
+  @override
+  String get moodLabel => 'Настроение';
+
+  @override
+  String get sleepHoursLabel => 'Сън (часове)';
+
+  @override
+  String get advancedMeasurementsTitle => 'Измервания';
+
+  @override
+  String get moreOptionsTitle => 'Още';
+
+  @override
+  String get feelTagLabel => 'Етикет';
+
+  @override
+  String get addFeelTagTitle => 'НОВ ЕТИКЕТ';
+
+  @override
+  String get feelTagNameLabel => 'Име';
+
+  @override
+  String get addFeelTagListItem => '+ Нов етикет';
+
+  @override
+  String get addFeelTagTooltip => 'Нов етикет';
+
+  @override
+  String get intensityLabel => 'Ниво';
+
+  @override
+  String get bodyTempLabel => 'Температура (°C)';
+
+  @override
+  String get pulseLabel => 'Пул (уд/мин)';
+
+  @override
+  String get bpLabel => 'Кръвно (120/80)';
+
+  @override
+  String get spo2Label => 'Кислород (%)';
+
+  @override
+  String get checkInNoLogsToday =>
+      'Няма записи за този ден. Натисни + за добавяне.';
+
+  @override
+  String get snackUndo => 'ОТМЯНА';
+
+  @override
+  String get libraryLabelScanTitle => 'ПРЕГЛЕД НА ЕТИКЕТ';
+
+  @override
+  String get libraryNoFlagsMatched => 'Няма открити маркери';
+
+  @override
+  String get libraryTabIngredients => 'СЪСТАВКИ';
+
+  @override
+  String get libraryTabRecipes => 'РЕЦЕПТИ';
+
+  @override
+  String get librarySearchDailyEssentialsHint => 'Търси ежедневни…';
+
+  @override
+  String get libraryDeleteDailyEssentialTitle => 'ПРЕМАХНИ ЕЖЕДНЕВНО';
+
+  @override
+  String moodLineShort(int rank) {
+    return 'Настроение $rank/4';
+  }
+
+  @override
+  String sleepLineShort(String hours) {
+    return 'Сън $hours ч';
+  }
+
+  @override
+  String failedFeelList(String details) {
+    return 'Неуспешно зареждане на етикети: $details';
   }
 }

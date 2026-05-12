@@ -101,31 +101,31 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In en, this message translates to:
-  /// **'BIO_CYBER OS'**
+  /// **'Vitality Calendar'**
   String get appTitle;
 
   /// No description provided for @navFuel.
   ///
   /// In en, this message translates to:
-  /// **'FUEL'**
+  /// **'FOOD'**
   String get navFuel;
 
   /// No description provided for @navSupps.
   ///
   /// In en, this message translates to:
-  /// **'SUPPS'**
+  /// **'DAILY ESSENTIALS'**
   String get navSupps;
 
   /// No description provided for @navMeds.
   ///
   /// In en, this message translates to:
-  /// **'MEDS'**
+  /// **'MY LIST'**
   String get navMeds;
 
   /// No description provided for @navVitals.
   ///
   /// In en, this message translates to:
-  /// **'VITALS'**
+  /// **'CHECK-IN'**
   String get navVitals;
 
   /// No description provided for @navReports.
@@ -149,26 +149,26 @@ abstract class AppLocalizations {
   /// No description provided for @screenFuelLog.
   ///
   /// In en, this message translates to:
-  /// **'FUEL LOG'**
+  /// **'FOOD LOG'**
   String get screenFuelLog;
 
   /// No description provided for @screenSupps.
   ///
   /// In en, this message translates to:
-  /// **'SUPPS'**
+  /// **'DAILY ESSENTIALS'**
   String get screenSupps;
 
   /// No description provided for @screenMeds.
   ///
   /// In en, this message translates to:
-  /// **'MEDS'**
+  /// **'MY LIST'**
   String get screenMeds;
 
-  /// No description provided for @screenVitalsSymptoms.
+  /// No description provided for @checkInTitle.
   ///
   /// In en, this message translates to:
-  /// **'VITALS & SYMPTOMS'**
-  String get screenVitalsSymptoms;
+  /// **'CHECK-IN'**
+  String get checkInTitle;
 
   /// No description provided for @screenReports.
   ///
@@ -329,7 +329,7 @@ abstract class AppLocalizations {
   /// No description provided for @nutritionDailyProgress.
   ///
   /// In en, this message translates to:
-  /// **'DAILY NUTRITION PROGRESS'**
+  /// **'DAILY FOOD PROGRESS'**
   String get nutritionDailyProgress;
 
   /// No description provided for @nutritionChartLegend.
@@ -529,6 +529,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Search…'**
   String get searchHint;
+
+  /// No description provided for @recipeIngredientSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search ingredients...'**
+  String get recipeIngredientSearchHint;
+
+  /// No description provided for @searchClearTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear search'**
+  String get searchClearTooltip;
+
+  /// No description provided for @scanBarcodeTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan barcode'**
+  String get scanBarcodeTooltip;
+
+  /// No description provided for @recipeBarcodeNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No library item matches that barcode.'**
+  String get recipeBarcodeNotFound;
+
+  /// No description provided for @recipeBarcodeWrongKind.
+  ///
+  /// In en, this message translates to:
+  /// **'That barcode is not an ingredient. Use an ingredient from your library.'**
+  String get recipeBarcodeWrongKind;
+
+  /// No description provided for @recipeIngredientBarcodeAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Added {name} ({grams} g).'**
+  String recipeIngredientBarcodeAdded(String name, String grams);
 
   /// No description provided for @noItemsFound.
   ///
@@ -953,7 +989,7 @@ abstract class AppLocalizations {
   /// No description provided for @msgValidDose.
   ///
   /// In en, this message translates to:
-  /// **'Enter a valid dose'**
+  /// **'Enter a valid amount'**
   String get msgValidDose;
 
   /// No description provided for @msgLogged.
@@ -1181,13 +1217,13 @@ abstract class AppLocalizations {
   /// No description provided for @saveAsDefaultDoseLibrary.
   ///
   /// In en, this message translates to:
-  /// **'Save as default dose in Library'**
+  /// **'Save as default amount in Library'**
   String get saveAsDefaultDoseLibrary;
 
   /// No description provided for @addSupplementTitle.
   ///
   /// In en, this message translates to:
-  /// **'ADD SUPPLEMENT'**
+  /// **'ADD DAILY ESSENTIAL'**
   String get addSupplementTitle;
 
   /// No description provided for @amountLabelShort.
@@ -1265,37 +1301,37 @@ abstract class AppLocalizations {
   /// No description provided for @supsLogIntakeTitle.
   ///
   /// In en, this message translates to:
-  /// **'LOG SUPPLEMENT INTAKE'**
+  /// **'LOG DAILY ESSENTIAL'**
   String get supsLogIntakeTitle;
 
   /// No description provided for @medsLogIntakeTitle.
   ///
   /// In en, this message translates to:
-  /// **'LOG MEDICATION INTAKE'**
+  /// **'LOG MY LIST ITEM'**
   String get medsLogIntakeTitle;
 
   /// No description provided for @supsEditLogTitle.
   ///
   /// In en, this message translates to:
-  /// **'EDIT SUPPLEMENT LOG'**
+  /// **'EDIT DAILY ESSENTIAL LOG'**
   String get supsEditLogTitle;
 
   /// No description provided for @medsEditLogTitle.
   ///
   /// In en, this message translates to:
-  /// **'EDIT MEDICATION LOG'**
+  /// **'EDIT MY LIST LOG'**
   String get medsEditLogTitle;
 
   /// No description provided for @supsNewSupplementTitle.
   ///
   /// In en, this message translates to:
-  /// **'NEW SUPPLEMENT'**
+  /// **'NEW DAILY ESSENTIAL'**
   String get supsNewSupplementTitle;
 
   /// No description provided for @medsNewMedicationTitle.
   ///
   /// In en, this message translates to:
-  /// **'ADD MEDICATION'**
+  /// **'ADD TO MY LIST'**
   String get medsNewMedicationTitle;
 
   /// No description provided for @medsMedicationName.
@@ -1307,25 +1343,25 @@ abstract class AppLocalizations {
   /// No description provided for @logSupplementBlock.
   ///
   /// In en, this message translates to:
-  /// **'LOG SUPPLEMENT — {block}'**
+  /// **'LOG DAILY ESSENTIAL — {block}'**
   String logSupplementBlock(String block);
 
   /// No description provided for @logMedicationBlock.
   ///
   /// In en, this message translates to:
-  /// **'LOG MEDICATION — {block}'**
+  /// **'LOG MY LIST — {block}'**
   String logMedicationBlock(String block);
 
   /// No description provided for @defaultSupplementName.
   ///
   /// In en, this message translates to:
-  /// **'Supplement'**
+  /// **'Daily essential'**
   String get defaultSupplementName;
 
   /// No description provided for @defaultMedicationName.
   ///
   /// In en, this message translates to:
-  /// **'Medication'**
+  /// **'List item'**
   String get defaultMedicationName;
 
   /// No description provided for @notificationReminderSuppIntake.
@@ -1349,13 +1385,13 @@ abstract class AppLocalizations {
   /// No description provided for @libraryDefaultDose.
   ///
   /// In en, this message translates to:
-  /// **'Default {dose} {unit} (tap to edit at log time)'**
+  /// **'Default {dose} {unit} amount (tap to edit at log time)'**
   String libraryDefaultDose(String dose, String unit);
 
   /// No description provided for @libraryNoDefaultDose.
   ///
   /// In en, this message translates to:
-  /// **'No default dose (tap to enter now)'**
+  /// **'No default amount (tap to enter now)'**
   String get libraryNoDefaultDose;
 
   /// No description provided for @dialogSaving.
@@ -1387,6 +1423,204 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Time for your intake: {name}'**
   String notificationTimeForIntake(String name);
+
+  /// No description provided for @foodTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'FOOD LOG'**
+  String get foodTitle;
+
+  /// No description provided for @todayTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'TODAY'**
+  String get todayTitle;
+
+  /// No description provided for @onTrackStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'ON TRACK'**
+  String get onTrackStatus;
+
+  /// No description provided for @energyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Energy'**
+  String get energyLabel;
+
+  /// No description provided for @focusLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus'**
+  String get focusLabel;
+
+  /// No description provided for @disclaimer.
+  ///
+  /// In en, this message translates to:
+  /// **'Vitality Calendar is for personal tracking only. Not medical advice. Consult a doctor for health decisions.'**
+  String get disclaimer;
+
+  /// No description provided for @checkInDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'CHECK-IN'**
+  String get checkInDialogTitle;
+
+  /// No description provided for @checkInDefaultTag.
+  ///
+  /// In en, this message translates to:
+  /// **'Check-in'**
+  String get checkInDefaultTag;
+
+  /// No description provided for @moodLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Mood'**
+  String get moodLabel;
+
+  /// No description provided for @sleepHoursLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sleep hours'**
+  String get sleepHoursLabel;
+
+  /// No description provided for @advancedMeasurementsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Measurements'**
+  String get advancedMeasurementsTitle;
+
+  /// No description provided for @moreOptionsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'More options'**
+  String get moreOptionsTitle;
+
+  /// No description provided for @feelTagLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Tag'**
+  String get feelTagLabel;
+
+  /// No description provided for @addFeelTagTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'NEW TAG'**
+  String get addFeelTagTitle;
+
+  /// No description provided for @feelTagNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get feelTagNameLabel;
+
+  /// No description provided for @addFeelTagListItem.
+  ///
+  /// In en, this message translates to:
+  /// **'+ Add new tag'**
+  String get addFeelTagListItem;
+
+  /// No description provided for @addFeelTagTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Add new tag'**
+  String get addFeelTagTooltip;
+
+  /// No description provided for @intensityLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Level'**
+  String get intensityLabel;
+
+  /// No description provided for @bodyTempLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Temp (°C)'**
+  String get bodyTempLabel;
+
+  /// No description provided for @pulseLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pulse (BPM)'**
+  String get pulseLabel;
+
+  /// No description provided for @bpLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'BP (120/80)'**
+  String get bpLabel;
+
+  /// No description provided for @spo2Label.
+  ///
+  /// In en, this message translates to:
+  /// **'Oxygen (%)'**
+  String get spo2Label;
+
+  /// No description provided for @checkInNoLogsToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing logged for this day yet. Tap + to add.'**
+  String get checkInNoLogsToday;
+
+  /// No description provided for @snackUndo.
+  ///
+  /// In en, this message translates to:
+  /// **'UNDO'**
+  String get snackUndo;
+
+  /// No description provided for @libraryLabelScanTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'LABEL SCAN'**
+  String get libraryLabelScanTitle;
+
+  /// No description provided for @libraryNoFlagsMatched.
+  ///
+  /// In en, this message translates to:
+  /// **'No flags matched'**
+  String get libraryNoFlagsMatched;
+
+  /// No description provided for @libraryTabIngredients.
+  ///
+  /// In en, this message translates to:
+  /// **'INGREDIENTS'**
+  String get libraryTabIngredients;
+
+  /// No description provided for @libraryTabRecipes.
+  ///
+  /// In en, this message translates to:
+  /// **'RECIPES'**
+  String get libraryTabRecipes;
+
+  /// No description provided for @librarySearchDailyEssentialsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search daily essentials…'**
+  String get librarySearchDailyEssentialsHint;
+
+  /// No description provided for @libraryDeleteDailyEssentialTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'REMOVE DAILY ESSENTIAL'**
+  String get libraryDeleteDailyEssentialTitle;
+
+  /// No description provided for @moodLineShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Mood {rank}/4'**
+  String moodLineShort(int rank);
+
+  /// No description provided for @sleepLineShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Sleep {hours} h'**
+  String sleepLineShort(String hours);
+
+  /// No description provided for @failedFeelList.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load tags: {details}'**
+  String failedFeelList(String details);
 }
 
 class _AppLocalizationsDelegate

@@ -3,14 +3,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:bio_cyber_os/l10n/app_localizations.dart';
 
-class SymptomLogScreen extends StatefulWidget {
-  const SymptomLogScreen({super.key});
+class CheckInScreen extends StatefulWidget {
+  const CheckInScreen({super.key});
 
   @override
-  State<SymptomLogScreen> createState() => _SymptomLogScreenState();
+  State<CheckInScreen> createState() => _CheckInScreenState();
 }
 
-class _SymptomLogScreenState extends State<SymptomLogScreen> {
+class _CheckInScreenState extends State<CheckInScreen> {
   static const _table = 'symptom_logs';
   static const _dictTable = 'symptom_dictionary';
   final _client = Supabase.instance.client;
@@ -117,9 +117,9 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
       initialTime.minute,
     );
 
-    final res = await showDialog<_SymptomLogDraft?>(
+    final res = await showDialog<_FeelLogDraft?>(
       context: context,
-      builder: (_) => _LogVitalsSymptomsDialog(
+      builder: (_) => _CheckInDialog(
         initialCreatedAtLocal: initialCreatedAtLocal,
       ),
     );
@@ -135,12 +135,12 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
         );
         return;
       }
-      final symptomName = await _ensureSymptomName(res.symptomType);
-      if (symptomName == null) return;
+      final feelName = await _ensureFeelName(res.feelType);
+      if (feelName == null) return;
       final payload = res.toUpsertMap(
         userId: uid,
         isoUtc: _isoUtc,
-        symptomType: symptomName,
+        feelType: feelName,
       );
       await _client.from(_table).insert(payload);
       if (!mounted) return;
@@ -177,7 +177,7 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
       return int.tryParse(v.toString());
     }
 
-    final existing = _SymptomLogDraft(
+    final existing = _FeelLogDraft(
       id: id,
       createdAtLocal: createdLocal,
       bodyTemp: asDouble(row['body_temp']),
@@ -186,14 +186,14 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
       bpDiastolic: asInt(row['bp_diastolic']),
       spo2: asInt(row['spo2']),
       glucose: asDouble(row['glucose']),
-      symptomType: asText(row['symptom_type']),
+      feelType: asText(row['symptom_type']),
       intensity: asInt(row['intensity']),
       notes: asText(row['notes']),
     );
 
-    final res = await showDialog<_SymptomLogDraft?>(
+    final res = await showDialog<_FeelLogDraft?>(
       context: context,
-      builder: (_) => _LogVitalsSymptomsDialog(
+      builder: (_) => _CheckInDialog(
         initialCreatedAtLocal: existing.createdAtLocal,
         initialDraft: existing,
       ),
@@ -210,12 +210,12 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
         );
         return;
       }
-      final symptomName = await _ensureSymptomName(res.symptomType);
-      if (symptomName == null) return;
+      final feelName = await _ensureFeelName(res.feelType);
+      if (feelName == null) return;
       final payload = res.toUpsertMap(
         userId: uid,
         isoUtc: _isoUtc,
-        symptomType: symptomName,
+        feelType: feelName,
       );
       await _client.from(_table).update(payload).eq('id', id).eq('user_id', uid);
       if (!mounted) return;
@@ -228,7 +228,7 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
     }
   }
 
-  Future<String?> _ensureSymptomName(String raw) async {
+  Future<String?> _ensureFeelName(String raw) async {
     final name = raw.trim();
     if (name.isEmpty) return null;
     try {
@@ -264,11 +264,12 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
     });
 
     var undone = false;
+    final loc = AppLocalizations.of(context)!;
     final controller = messenger.showSnackBar(
       SnackBar(
-        content: const Text('Log deleted.'),
+        content: Text(loc.msgLogDeleted),
         action: SnackBarAction(
-          label: 'UNDO',
+          label: loc.snackUndo,
           onPressed: () {
             undone = true;
             if (!mounted) return;
@@ -336,7 +337,7 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: Text(l10n.screenVitalsSymptoms),
+        title: Text(l10n.checkInTitle),
         actions: [
           IconButton(
             onPressed: _fetch,
@@ -346,7 +347,7 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        heroTag: 'vitals_fab',
+        heroTag: 'check_in_fab',
         onPressed: _openLogDialog,
         backgroundColor: cyan,
         foregroundColor: Colors.black,
@@ -419,13 +420,13 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
                         ),
                       )
                     : _rows.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Padding(
-                              padding: EdgeInsets.all(20),
+                              padding: const EdgeInsets.all(20),
                               child: Text(
-                                'No logs yet today. Tap + to add.',
+                                l10n.checkInNoLogsToday,
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: Color(0x8800F3FF),
                                   fontFamily: 'monospace',
                                   fontSize: 13,
@@ -474,15 +475,15 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
                                   'Glu ${fmtNum(glucose, decimals: 1)}',
                               ];
 
-                              final symptomType = _nonEmpty(row['symptom_type']);
+                              final feelLabel = _nonEmpty(row['symptom_type']);
                               final intensity = row['intensity'];
                               final intensityInt = intensity is num
                                   ? intensity.toInt()
                                   : int.tryParse((intensity ?? '').toString());
-                              final symptomLine = symptomType.isNotEmpty
+                              final feelLine = feelLabel.isNotEmpty
                                   ? (intensityInt != null
-                                      ? '$symptomType — $intensityInt/10'
-                                      : symptomType)
+                                      ? '$feelLabel — $intensityInt/10'
+                                      : feelLabel)
                                   : '';
 
                               final notes = _nonEmpty(row['notes']);
@@ -567,10 +568,10 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
                                             ),
                                           ),
                                         ],
-                                        if (symptomLine.isNotEmpty) ...[
+                                        if (feelLine.isNotEmpty) ...[
                                           const SizedBox(height: 8),
                                           Text(
-                                            symptomLine,
+                                            feelLine,
                                             style: const TextStyle(
                                               color: cyan,
                                               fontSize: 14,
@@ -598,7 +599,7 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
                               if (id.isEmpty) return tile;
 
                               return Dismissible(
-                                key: ValueKey('symptom_log:$id'),
+                                key: ValueKey('check_in_log:$id'),
                                 direction: DismissDirection.endToStart,
                                 confirmDismiss: (_) async {
                                   // Always allow swipe; actual delete is delayed with UNDO.
@@ -635,7 +636,7 @@ class _SymptomLogScreenState extends State<SymptomLogScreen> {
   }
 }
 
-class _SymptomLogDraft {
+class _FeelLogDraft {
   final String? id;
   final DateTime createdAtLocal;
   final double? bodyTemp;
@@ -644,11 +645,11 @@ class _SymptomLogDraft {
   final int? bpDiastolic;
   final int? spo2;
   final double? glucose;
-  final String symptomType;
+  final String feelType;
   final int? intensity;
   final String notes;
 
-  const _SymptomLogDraft({
+  const _FeelLogDraft({
     this.id,
     required this.createdAtLocal,
     required this.bodyTemp,
@@ -657,7 +658,7 @@ class _SymptomLogDraft {
     required this.bpDiastolic,
     required this.spo2,
     required this.glucose,
-    required this.symptomType,
+    required this.feelType,
     required this.intensity,
     required this.notes,
   });
@@ -665,7 +666,7 @@ class _SymptomLogDraft {
   Map<String, dynamic> toUpsertMap({
     required String userId,
     required String Function(DateTime) isoUtc,
-    required String symptomType,
+    required String feelType,
   }) {
     final map = <String, dynamic>{
       'user_id': userId,
@@ -677,29 +678,32 @@ class _SymptomLogDraft {
     if (bpDiastolic != null) map['bp_diastolic'] = bpDiastolic;
     if (spo2 != null) map['spo2'] = spo2;
     if (glucose != null) map['glucose'] = glucose;
-    if (symptomType.trim().isNotEmpty) map['symptom_type'] = symptomType.trim();
+    if (feelType.trim().isNotEmpty) map['symptom_type'] = feelType.trim();
     if (intensity != null) map['intensity'] = intensity;
     if (notes.trim().isNotEmpty) map['notes'] = notes.trim();
     return map;
   }
 }
 
-class _LogVitalsSymptomsDialog extends StatefulWidget {
+class _CheckInDialog extends StatefulWidget {
   final DateTime initialCreatedAtLocal;
-  final _SymptomLogDraft? initialDraft;
+  final _FeelLogDraft? initialDraft;
 
-  const _LogVitalsSymptomsDialog({
+  const _CheckInDialog({
     required this.initialCreatedAtLocal,
     this.initialDraft,
   });
 
   @override
-  State<_LogVitalsSymptomsDialog> createState() =>
-      _LogVitalsSymptomsDialogState();
+  State<_CheckInDialog> createState() =>
+      _CheckInDialogState();
 }
 
-class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
-  static const _addNewSentinel = '__ADD_NEW_SYMPTOM__';
+class _CheckInDialogState extends State<_CheckInDialog> {
+  static const _addNewSentinel = '__ADD_NEW_FEEL__';
+  static const List<String> _energyEmojis = ['😫', '😐', '🙂', '😄'];
+  static const List<String> _moodEmojis = ['😢', '😕', '😊', '🤩'];
+
   final _client = Supabase.instance.client;
 
   late DateTime _createdAtLocal;
@@ -708,13 +712,20 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
   final _pulseCtrl = TextEditingController();
   final _bpCtrl = TextEditingController();
   final _spo2Ctrl = TextEditingController();
+  final _sleepHoursCtrl = TextEditingController();
 
-  bool _loadingSymptoms = true;
-  Object? _symptomLoadError;
-  List<String> _symptomTypes = const [];
-  String? _symptomType;
+  bool _loadingFeelTypes = true;
+  Object? _feelLoadError;
+  List<String> _feelTypes = const [];
+  String? _selectedFeelType;
   double _intensity = 5;
   final _notesCtrl = TextEditingController();
+
+  /// When false, only Energy / Mood / Sleep are shown up top; measurements live in [ExpansionTile].
+  bool _showAdvancedMeasurements = false;
+
+  int? _energyEmojiIdx;
+  int? _moodEmojiIdx;
 
   bool _saving = false;
 
@@ -735,16 +746,37 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
       }
       if (d.spo2 != null) _spo2Ctrl.text = d.spo2.toString();
       _notesCtrl.text = d.notes;
-      if (d.intensity != null) _intensity = d.intensity!.toDouble();
-      if (d.symptomType.trim().isNotEmpty) _symptomType = d.symptomType.trim();
+      if (d.intensity != null) {
+        _intensity = d.intensity!.toDouble();
+        final ie = d.intensity!;
+        if (ie <= 4) {
+          _energyEmojiIdx = 1;
+        } else if (ie <= 6) {
+          _energyEmojiIdx = 2;
+        } else if (ie <= 8) {
+          _energyEmojiIdx = 3;
+        } else {
+          _energyEmojiIdx = 4;
+        }
+      }
+      if (d.feelType.trim().isNotEmpty) {
+        _selectedFeelType = d.feelType.trim();
+      }
+      final hasMeasurements = d.bodyTemp != null ||
+          d.heartRate != null ||
+          d.bpSystolic != null ||
+          d.bpDiastolic != null ||
+          d.spo2 != null ||
+          d.glucose != null;
+      if (hasMeasurements) _showAdvancedMeasurements = true;
     }
-    _loadSymptomDictionary();
+    _loadFeelDictionary();
   }
 
-  Future<void> _loadSymptomDictionary() async {
+  Future<void> _loadFeelDictionary() async {
     setState(() {
-      _loadingSymptoms = true;
-      _symptomLoadError = null;
+      _loadingFeelTypes = true;
+      _feelLoadError = null;
     });
     try {
       final data =
@@ -756,8 +788,14 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
           .toList();
       names.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-      // Ensure currently selected symptom exists in list (edit mode / legacy rows).
-      final current = (_symptomType ?? '').trim();
+      const canonicalDefault = 'Check-in';
+      if (!names.any(
+            (e) => e.toLowerCase() == canonicalDefault.toLowerCase(),
+          )) {
+        names.insert(0, canonicalDefault);
+      }
+
+      final current = (_selectedFeelType ?? '').trim();
       if (current.isNotEmpty &&
           !names.any((e) => e.toLowerCase() == current.toLowerCase())) {
         names.insert(0, current);
@@ -765,21 +803,22 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
 
       if (!mounted) return;
       setState(() {
-        _symptomTypes = names;
-        _symptomType ??= _symptomTypes.isNotEmpty ? _symptomTypes.first : null;
-        _loadingSymptoms = false;
+        _feelTypes = names;
+        _selectedFeelType ??= canonicalDefault;
+        _loadingFeelTypes = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _symptomLoadError = e;
-        _symptomTypes = const [];
-        _loadingSymptoms = false;
+        _feelLoadError = e;
+        _feelTypes = const [];
+        _loadingFeelTypes = false;
       });
     }
   }
 
-  Future<void> _addNewSymptomFlow() async {
+  Future<void> _addNewFeelFlow() async {
+    final loc = AppLocalizations.of(context)!;
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
     final ctrl = TextEditingController();
@@ -788,22 +827,22 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
       builder: (_) => AlertDialog(
         backgroundColor: bg,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: const Text(
-          'ADD NEW SYMPTOM',
-          style: TextStyle(color: cyan, fontFamily: 'monospace'),
+        title: Text(
+          loc.addFeelTagTitle,
+          style: const TextStyle(color: cyan, fontFamily: 'monospace'),
         ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            labelStyle: TextStyle(color: cyan, fontFamily: 'monospace'),
-            enabledBorder: OutlineInputBorder(
+          decoration: InputDecoration(
+            labelText: loc.feelTagNameLabel,
+            labelStyle: const TextStyle(color: cyan, fontFamily: 'monospace'),
+            enabledBorder: const OutlineInputBorder(
               borderRadius: BorderRadius.zero,
               borderSide: BorderSide(color: cyan, width: 1),
             ),
-            focusedBorder: OutlineInputBorder(
+            focusedBorder: const OutlineInputBorder(
               borderRadius: BorderRadius.zero,
               borderSide: BorderSide(color: cyan, width: 1.5),
             ),
@@ -813,11 +852,11 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(null),
-            child: const Text('CANCEL'),
+            child: Text(loc.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
-            child: const Text('ADD'),
+            child: Text(loc.save),
           ),
         ],
       ),
@@ -825,11 +864,11 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
     final trimmed = (name ?? '').trim();
     if (trimmed.isEmpty || !mounted) return;
     setState(() {
-      _symptomTypes = [
+      _feelTypes = [
         trimmed,
-        ..._symptomTypes.where((e) => e.toLowerCase() != trimmed.toLowerCase()),
+        ..._feelTypes.where((e) => e.toLowerCase() != trimmed.toLowerCase()),
       ];
-      _symptomType = trimmed;
+      _selectedFeelType = trimmed;
     });
   }
 
@@ -839,6 +878,7 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
     _pulseCtrl.dispose();
     _bpCtrl.dispose();
     _spo2Ctrl.dispose();
+    _sleepHoursCtrl.dispose();
     _notesCtrl.dispose();
     super.dispose();
   }
@@ -871,19 +911,52 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
     });
   }
 
+  int _intensityFromEnergyEmoji() {
+    switch (_energyEmojiIdx) {
+      case 1:
+        return 3;
+      case 2:
+        return 5;
+      case 3:
+        return 7;
+      case 4:
+        return 9;
+      default:
+        return _intensity.round().clamp(1, 10);
+    }
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
     try {
+      final loc = AppLocalizations.of(context)!;
       final bodyTemp = _tryDouble(_tempCtrl.text);
       final pulse = _tryInt(_pulseCtrl.text);
       final bp = _parseBp(_bpCtrl.text);
       final spo2 = _tryInt(_spo2Ctrl.text);
 
-      final clampedIntensity = _intensity.round().clamp(1, 10);
+      final clampedIntensity = _intensityFromEnergyEmoji();
 
-      final sym = (_symptomType ?? '').trim();
-      final draft = _SymptomLogDraft(
+      final defaultTag = loc.checkInDefaultTag;
+      final tagTrim = (_selectedFeelType ?? '').trim();
+      final feelOut = tagTrim.isEmpty ? defaultTag : tagTrim;
+
+      final extra = <String>[];
+      if (_moodEmojiIdx != null) {
+        extra.add(loc.moodLineShort(_moodEmojiIdx!));
+      }
+      final sleep = _sleepHoursCtrl.text.trim();
+      if (sleep.isNotEmpty) {
+        extra.add(loc.sleepLineShort(sleep));
+      }
+      var notesOut = _notesCtrl.text.trim();
+      if (extra.isNotEmpty) {
+        final prefix = extra.join('\n');
+        notesOut = notesOut.isEmpty ? prefix : '$prefix\n$notesOut';
+      }
+
+      final draft = _FeelLogDraft(
         id: widget.initialDraft?.id,
         createdAtLocal: _createdAtLocal,
         bodyTemp: bodyTemp,
@@ -892,9 +965,9 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
         bpDiastolic: bp.$2,
         spo2: spo2,
         glucose: null,
-        symptomType: sym,
+        feelType: feelOut,
         intensity: clampedIntensity,
-        notes: _notesCtrl.text,
+        notes: notesOut,
       );
 
       if (!mounted) return;
@@ -920,10 +993,62 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
     );
   }
 
+  Widget _emojiRow({
+    required String title,
+    required List<String> emojis,
+    required int? selected,
+    required ValueChanged<int> onPick,
+  }) {
+    const cyan = Color(0xFF00F3FF);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: cyan.withValues(alpha: 0.9),
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.0,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(emojis.length, (i) {
+            final idx = i + 1;
+            final on = selected == idx;
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Material(
+                  color: on ? const Color(0x2200F3FF) : Colors.transparent,
+                  child: InkWell(
+                    onTap: () => setState(() => onPick(idx)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Text(
+                        emojis[i],
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 28),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
+    final loc = AppLocalizations.of(context)!;
 
     final timeLabel =
         '${_createdAtLocal.hour.toString().padLeft(2, '0')}:${_createdAtLocal.minute.toString().padLeft(2, '0')}';
@@ -931,9 +1056,9 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
     return AlertDialog(
       backgroundColor: bg,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      title: const Text(
-        'LOG VITALS & SYMPTOMS',
-        style: TextStyle(color: cyan, fontFamily: 'monospace'),
+      title: Text(
+        loc.checkInDialogTitle,
+        style: const TextStyle(color: cyan, fontFamily: 'monospace'),
       ),
       content: SizedBox(
         width: 520,
@@ -952,7 +1077,7 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
                 ),
                 icon: const Icon(Icons.schedule),
                 label: Text(
-                  'TIME  $timeLabel',
+                  loc.timeAt(timeLabel),
                   style: const TextStyle(
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.w800,
@@ -961,178 +1086,217 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text(
-                'PHYSICAL VITALS',
-                style: TextStyle(
-                  color: cyan.withValues(alpha: 0.9),
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                  fontSize: 12,
+              _emojiRow(
+                title: loc.energyLabel,
+                emojis: _energyEmojis,
+                selected: _energyEmojiIdx,
+                onPick: (i) => setState(() => _energyEmojiIdx = i),
+              ),
+              const SizedBox(height: 14),
+              _emojiRow(
+                title: loc.moodLabel,
+                emojis: _moodEmojis,
+                selected: _moodEmojiIdx,
+                onPick: (i) => setState(() => _moodEmojiIdx = i),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _sleepHoursCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                decoration: _dec(loc.sleepHoursLabel),
+              ),
+              const SizedBox(height: 12),
+              ExpansionTile(
+                initiallyExpanded: _showAdvancedMeasurements,
+                onExpansionChanged: (open) =>
+                    setState(() => _showAdvancedMeasurements = open),
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  loc.advancedMeasurementsTitle,
+                  style: TextStyle(
+                    color: cyan.withValues(alpha: 0.95),
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    letterSpacing: 1.0,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _tempCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                decoration: _dec('Temp (°C)'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _pulseCtrl,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                decoration: _dec('Pulse (BPM)'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _bpCtrl,
-                keyboardType: TextInputType.text,
-                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                decoration: _dec('BP (120/80)'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _spo2Ctrl,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                decoration: _dec('SpO2 (%)'),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'SYMPTOMS',
-                style: TextStyle(
-                  color: cyan.withValues(alpha: 0.9),
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
                 children: [
-                  Expanded(
-                    child: _loadingSymptoms
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 10),
-                            child: LinearProgressIndicator(),
-                          )
-                        : DropdownButtonFormField<String>(
-                            initialValue: _symptomType,
-                            dropdownColor: bg,
-                            decoration: _dec('Symptom type'),
-                            items: [
-                              ..._symptomTypes.map(
-                                (t) => DropdownMenuItem(
-                                  value: t,
-                                  child: Text(
-                                    t,
-                                    style: const TextStyle(
-                                      color: cyan,
-                                      fontFamily: 'monospace',
+                  TextField(
+                    controller: _tempCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    decoration: _dec(loc.bodyTempLabel),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _pulseCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    decoration: _dec(loc.pulseLabel),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _bpCtrl,
+                    keyboardType: TextInputType.text,
+                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    decoration: _dec(loc.bpLabel),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _spo2Ctrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    decoration: _dec(loc.spo2Label),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  loc.moreOptionsTitle,
+                  style: TextStyle(
+                    color: cyan.withValues(alpha: 0.95),
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _loadingFeelTypes
+                            ? const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 10),
+                                child: LinearProgressIndicator(),
+                              )
+                            : DropdownButtonFormField<String>(
+                                key: ValueKey(
+                                  '${_feelTypes.join()}|${_selectedFeelType ?? ''}',
+                                ),
+                                initialValue: _selectedFeelType,
+                                dropdownColor: bg,
+                                decoration: _dec(loc.feelTagLabel),
+                                items: [
+                                  ..._feelTypes.map(
+                                    (t) => DropdownMenuItem(
+                                      value: t,
+                                      child: Text(
+                                        t,
+                                        style: const TextStyle(
+                                          color: cyan,
+                                          fontFamily: 'monospace',
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              const DropdownMenuItem(
-                                value: _addNewSentinel,
-                                child: Text(
-                                  '+ Add New Symptom',
-                                  style: TextStyle(
-                                    color: Color(0xFF88CCFF),
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.w800,
+                                  DropdownMenuItem(
+                                    value: _addNewSentinel,
+                                    child: Text(
+                                      loc.addFeelTagListItem,
+                                      style: const TextStyle(
+                                        color: Color(0xFF88CCFF),
+                                        fontFamily: 'monospace',
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                ],
+                                onChanged: (v) async {
+                                  if (v == null) return;
+                                  if (v == _addNewSentinel) {
+                                    await _addNewFeelFlow();
+                                    return;
+                                  }
+                                  if (!mounted) return;
+                                  setState(() {
+                                    _selectedFeelType = v;
+                                    _showAdvancedMeasurements = true;
+                                  });
+                                },
                               ),
-                            ],
-                            onChanged: (v) async {
-                              if (v == null) return;
-                              if (v == _addNewSentinel) {
-                                await _addNewSymptomFlow();
-                                return;
-                              }
-                              if (!mounted) return;
-                              setState(() => _symptomType = v);
-                            },
-                          ),
+                      ),
+                      const SizedBox(width: 10),
+                      IconButton(
+                        tooltip: loc.addFeelTagTooltip,
+                        onPressed:
+                            _loadingFeelTypes ? null : _addNewFeelFlow,
+                        icon: const Icon(Icons.add, color: cyan),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  IconButton(
-                    tooltip: 'Add new symptom',
-                    onPressed: _loadingSymptoms ? null : _addNewSymptomFlow,
-                    icon: const Icon(Icons.add, color: cyan),
+                  if (_feelLoadError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      loc.failedFeelList(_feelLoadError.toString()),
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    OutlinedButton(
+                      onPressed: _loadFeelDictionary,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: cyan,
+                        side: const BorderSide(color: cyan, width: 1),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero,
+                        ),
+                      ),
+                      child: Text(
+                        loc.refresh,
+                        style: const TextStyle(fontFamily: 'monospace'),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(
+                        loc.intensityLabel,
+                        style: const TextStyle(
+                          color: Color(0x8800F3FF),
+                          fontFamily: 'monospace',
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${_intensity.round()}/10',
+                        style: const TextStyle(
+                          color: cyan,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
                   ),
+                  Slider(
+                    value: _intensity,
+                    min: 1,
+                    max: 10,
+                    divisions: 9,
+                    label: _intensity.round().toString(),
+                    activeColor: cyan,
+                    inactiveColor: const Color(0x3300F3FF),
+                    onChanged: (v) => setState(() => _intensity = v),
+                  ),
+                  TextField(
+                    controller: _notesCtrl,
+                    maxLines: 3,
+                    style: const TextStyle(color: cyan, fontFamily: 'monospace'),
+                    decoration: _dec(loc.notes),
+                  ),
+                  const SizedBox(height: 8),
                 ],
-              ),
-              if (_symptomLoadError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Failed to load symptom list: ${_symptomLoadError.toString()}',
-                  style: const TextStyle(
-                    color: Colors.redAccent,
-                    fontFamily: 'monospace',
-                    fontSize: 11,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                OutlinedButton(
-                  onPressed: _loadSymptomDictionary,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: cyan,
-                    side: const BorderSide(color: cyan, width: 1),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
-                    ),
-                  ),
-                  child: const Text(
-                    'RETRY LOAD',
-                    style: TextStyle(fontFamily: 'monospace'),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Text(
-                    'Intensity',
-                    style: TextStyle(
-                      color: Color(0x8800F3FF),
-                      fontFamily: 'monospace',
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${_intensity.round()}/10',
-                    style: const TextStyle(
-                      color: cyan,
-                      fontFamily: 'monospace',
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ],
-              ),
-              Slider(
-                value: _intensity,
-                min: 1,
-                max: 10,
-                divisions: 9,
-                label: _intensity.round().toString(),
-                activeColor: cyan,
-                inactiveColor: const Color(0x3300F3FF),
-                onChanged: (v) => setState(() => _intensity = v),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _notesCtrl,
-                maxLines: 3,
-                style: const TextStyle(color: cyan, fontFamily: 'monospace'),
-                decoration: _dec('Notes'),
               ),
             ],
           ),
@@ -1141,11 +1305,11 @@ class _LogVitalsSymptomsDialogState extends State<_LogVitalsSymptomsDialog> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.of(context).pop(null),
-          child: const Text('CANCEL'),
+          child: Text(loc.cancel),
         ),
         TextButton(
           onPressed: _saving ? null : _save,
-          child: const Text('SAVE'),
+          child: Text(loc.save),
         ),
       ],
     );

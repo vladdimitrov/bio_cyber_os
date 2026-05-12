@@ -11,7 +11,7 @@ import '../../../core/supabase_error_message.dart';
 import '../../../core/models/ingredient.dart';
 import '../../../core/models/supplement.dart';
 import '../../../core/services/global_barcode_lookup_service.dart';
-import '../../../core/services/protocol_keyword_scanner.dart';
+import '../../../core/services/stack_keyword_scanner.dart';
 import '../../../core/widgets/bio_cyber_search_bar.dart';
 import '../../../core/widgets/diet_indicator_badges.dart';
 import '../../food/screens/barcode_scanner_screen.dart';
@@ -90,16 +90,20 @@ GlobalBarcodeLibraryTab _mapLibraryTabToGlobal(LibraryBarcodeScanTab tab) {
   }
 }
 
-/// Red keyword chips vs green “Safe for Protocol” when none of the terms appear.
-Widget _buildProtocolKeywordCompliance(ProtocolKeywordReport report) {
+/// Red keyword chips vs green “all clear” when none of the terms appear.
+Widget _buildStackKeywordCompliance(
+  BuildContext context,
+  StackKeywordReport report,
+) {
+  final loc = AppLocalizations.of(context)!;
   const gold = AppColors.cyberGold;
   if (report.anyDetected) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'PROTOCOL SCAN',
-          style: TextStyle(
+        Text(
+          loc.libraryLabelScanTitle,
+          style: const TextStyle(
             color: gold,
             fontFamily: 'monospace',
             fontWeight: FontWeight.w800,
@@ -139,14 +143,14 @@ Widget _buildProtocolKeywordCompliance(ProtocolKeywordReport report) {
     decoration: BoxDecoration(
       border: Border.all(color: const Color(0xFF22C55E), width: 1),
     ),
-    child: const Row(
+    child: Row(
       children: [
-        Icon(Icons.verified_outlined, color: Color(0xFF22C55E), size: 20),
-        SizedBox(width: 8),
+        const Icon(Icons.verified_outlined, color: Color(0xFF22C55E), size: 20),
+        const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'Safe for Protocol',
-            style: TextStyle(
+            loc.libraryNoFlagsMatched,
+            style: const TextStyle(
               color: Color(0xFF22C55E),
               fontFamily: 'monospace',
               fontWeight: FontWeight.w800,
@@ -173,7 +177,7 @@ Future<bool> _showExternalCatalogImportDialog(
     product.name,
     if ((product.brand ?? '').trim().isNotEmpty) product.brand!,
   ].join('\n');
-  final report = scanProtocolKeywords(scanText);
+  final report = scanStackKeywords(scanText);
   final preview = product.ingredientsSearchText.trim();
   final previewShort = preview.length > 720 ? '${preview.substring(0, 720)}…' : preview;
 
@@ -261,7 +265,7 @@ Future<bool> _showExternalCatalogImportDialog(
                 ),
               ],
               const SizedBox(height: 14),
-              _buildProtocolKeywordCompliance(report),
+              _buildStackKeywordCompliance(ctx, report),
             ],
           ),
         ),
@@ -541,11 +545,11 @@ class _LibraryScreenState extends State<LibraryScreen>
             fontWeight: FontWeight.w800,
             letterSpacing: 1.0,
           ),
-          tabs: const [
-            Tab(text: 'INGREDIENTS'),
-            Tab(text: 'RECIPES'),
-            Tab(text: 'SUPPLEMENTS'),
-            Tab(text: 'MEDS'),
+          tabs: [
+            Tab(text: l10n.libraryTabIngredients),
+            Tab(text: l10n.libraryTabRecipes),
+            Tab(text: l10n.navSupps),
+            Tab(text: l10n.navMeds),
           ],
         ),
       ),
@@ -1535,6 +1539,7 @@ class _SupplementsTabState extends State<_SupplementsTab> {
   @override
   Widget build(BuildContext context) {
     const cyan = Color(0xFF00F3FF);
+    final l10n = AppLocalizations.of(context)!;
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snap) {
@@ -1654,7 +1659,7 @@ class _SupplementsTabState extends State<_SupplementsTab> {
                         final messenger = ScaffoldMessenger.of(context);
                         final ok = await _confirmDeleteDialog(
                           context,
-                          title: 'DELETE SUPPLEMENT',
+                          title: l10n.libraryDeleteDailyEssentialTitle,
                           body: name,
                         );
                         if (!ok) return;
@@ -1719,7 +1724,7 @@ class _SupplementsTabState extends State<_SupplementsTab> {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: BioCyberSearchBar(
                 controller: _searchCtrl,
-                hintText: 'SEARCH SUPPLEMENTS…',
+                hintText: l10n.librarySearchDailyEssentialsHint,
                 onChanged: (_) => setState(() {}),
                 isLookupBusy: _barcodeLookupBusy,
                 suffix: IconButton(
@@ -2220,7 +2225,9 @@ class _SupplementDialogState extends State<_SupplementDialog> {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
     const gold = AppColors.cyberGold;
-    final title = widget.existing == null ? 'ADD SUPPLEMENT' : 'EDIT SUPPLEMENT';
+    final loc = AppLocalizations.of(context)!;
+    final title =
+        widget.existing == null ? loc.addSupplementTitle : loc.supsEditLogTitle;
     return AlertDialog(
       backgroundColor: bg,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
@@ -2583,6 +2590,7 @@ class _RecipeBuilderSheetState extends State<_RecipeBuilderSheet> {
   final _client = Supabase.instance.client;
   final _name = TextEditingController();
   final _grams = TextEditingController();
+  final _ingredientSearchCtrl = TextEditingController();
 
   bool _loadingIngredients = true;
   bool _saving = false;
@@ -2590,6 +2598,7 @@ class _RecipeBuilderSheetState extends State<_RecipeBuilderSheet> {
   List<Map<String, dynamic>> _ingredients = const [];
   Map<String, dynamic>? _selectedIngredient;
   final List<Map<String, dynamic>> _pendingIngredients = [];
+  bool _barcodeBusy = false;
 
   void _onGramsChanged() {
     if (mounted) setState(() {});
@@ -2609,8 +2618,15 @@ class _RecipeBuilderSheetState extends State<_RecipeBuilderSheet> {
     _grams.removeListener(_onGramsChanged);
     _name.dispose();
     _grams.dispose();
+    _ingredientSearchCtrl.dispose();
     super.dispose();
   }
+
+  /// Same name filter as the main food log list (`_filterLibraryRowsByName`).
+  List<Map<String, dynamic>> get _filteredIngredients => _filterLibraryRowsByName(
+        _ingredients,
+        _ingredientSearchCtrl.text,
+      );
 
   Future<void> _loadIngredients() async {
     setState(() => _loadingIngredients = true);
@@ -2618,7 +2634,7 @@ class _RecipeBuilderSheetState extends State<_RecipeBuilderSheet> {
       final data = await _client
           .from('ingredients')
           .select(
-            'id,name,protein_per_100g,carbs_per_100g,fat_per_100g,calories_per_100g',
+            'id,name,barcode,protein_per_100g,carbs_per_100g,fat_per_100g,calories_per_100g',
           )
           .order('name');
       final rows = (data as List).cast<Map<String, dynamic>>();
@@ -2705,12 +2721,23 @@ class _RecipeBuilderSheetState extends State<_RecipeBuilderSheet> {
     );
   }
 
-  void _addPending() {
-    final ing = _selectedIngredient;
-    if (ing == null) return;
-    final grams = _d(_grams.text);
-    if (grams <= 0) return;
-    setState(() {
+  /// Merges grams into an existing pending line with the same [ingredient_id], otherwise appends.
+  void _mergePendingIngredient(Map<String, dynamic> ing, double grams) {
+    final id = (ing['id'] ?? '').toString();
+    if (id.isEmpty || grams <= 0) return;
+    final idx = _pendingIngredients.indexWhere(
+      (e) => (e['ingredient_id'] ?? '').toString() == id,
+    );
+    if (idx >= 0) {
+      final existing = _pendingIngredients[idx];
+      final g0 = existing['amount_grams'] is num
+          ? (existing['amount_grams'] as num).toDouble()
+          : MacroDisplay.asDouble(existing['amount_grams']);
+      _pendingIngredients[idx] = {
+        ...existing,
+        'amount_grams': g0 + grams,
+      };
+    } else {
       _pendingIngredients.add({
         'ingredient_id': ing['id'],
         'ingredient_name': (ing['name'] ?? '').toString(),
@@ -2720,6 +2747,92 @@ class _RecipeBuilderSheetState extends State<_RecipeBuilderSheet> {
         'fat_per_100g': MacroDisplay.asDouble(ing['fat_per_100g']),
         'calories_per_100g': MacroDisplay.asDouble(ing['calories_per_100g']),
       });
+    }
+  }
+
+  void _ensureIngredientInCacheNoSetState(Map<String, dynamic> ing) {
+    final id = (ing['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    if (_ingredients.any((e) => (e['id'] ?? '').toString() == id)) return;
+    final next = List<Map<String, dynamic>>.from(_ingredients)
+      ..add(Map<String, dynamic>.from(ing));
+    next.sort(
+      (a, b) =>
+          (a['name'] ?? '').toString().compareTo((b['name'] ?? '').toString()),
+    );
+    _ingredients = next;
+  }
+
+  Future<void> _scanRecipeIngredientBarcode() async {
+    if (_barcodeBusy || _loadingIngredients) return;
+    final loc = AppLocalizations.of(context)!;
+    setState(() => _barcodeBusy = true);
+    try {
+      final res = await BarcodeScannerScreen.pushForResult(
+        context,
+        pickCodeOnly: true,
+      );
+      if (!mounted) return;
+      if (res == null) return;
+      final code = (res['barcode'] ?? '').toString().trim();
+      if (code.isEmpty) return;
+
+      final hit = await _lookupBarcodeInLibraryTables(_client, code);
+      if (!mounted) return;
+      if (hit == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(loc.recipeBarcodeNotFound)),
+        );
+        return;
+      }
+      if (hit.kind != _BarcodeHitKind.ingredient) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(loc.recipeBarcodeWrongKind)),
+        );
+        return;
+      }
+
+      final ing = Map<String, dynamic>.from(hit.row);
+      final grams = _d(_grams.text) > 0 ? _d(_grams.text) : 100.0;
+
+      setState(() {
+        _ensureIngredientInCacheNoSetState(ing);
+        _mergePendingIngredient(ing, grams);
+        _ingredientSearchCtrl.clear();
+        _selectedIngredient = null;
+      });
+
+      if (!mounted) return;
+      final gramsLabel = grams == grams.roundToDouble()
+          ? grams.toInt().toString()
+          : grams.toStringAsFixed(1);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            loc.recipeIngredientBarcodeAdded(
+              (ing['name'] ?? '').toString(),
+              gramsLabel,
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) setState(() => _barcodeBusy = false);
+    }
+  }
+
+  void _addPending() {
+    final ing = _selectedIngredient;
+    if (ing == null) return;
+    final grams = _d(_grams.text);
+    if (grams <= 0) return;
+    setState(() {
+      _mergePendingIngredient(ing, grams);
       _grams.clear();
     });
   }
@@ -2852,167 +2965,305 @@ class _RecipeBuilderSheetState extends State<_RecipeBuilderSheet> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF050510);
     const cyan = Color(0xFF00F3FF);
+    final loc = AppLocalizations.of(context)!;
+    final sheetH = MediaQuery.sizeOf(context).height * 0.92;
 
-    return SafeArea(
-      child: Container(
-        color: bg,
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: cyan, width: 2)),
-              ),
-              child: const Text(
-                'RECIPE BUILDER',
-                style: TextStyle(
-                  color: cyan,
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.1,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _name,
-              onChanged: (_) {
-                if (_nameMissing && _name.text.trim().isNotEmpty) {
-                  setState(() => _nameMissing = false);
-                }
-              },
-              decoration: InputDecoration(
-                labelText: 'Recipe name',
-                errorText: (_nameMissing && _name.text.trim().isEmpty)
-                    ? 'Please enter a recipe name.'
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _loadingIngredients
-                ? const LinearProgressIndicator()
-                : DropdownButtonFormField<Map<String, dynamic>>(
-                    initialValue: _selectedIngredient,
-                    items: _ingredients
-                        .map(
-                          (i) => DropdownMenuItem(
-                            value: i,
-                            child: Text((i['name'] ?? '').toString()),
-                          ),
-                        )
-                        .toList(growable: false),
-                    onChanged: (v) => setState(() => _selectedIngredient = v),
-                    decoration: const InputDecoration(labelText: 'Ingredient'),
-                  ),
-            const SizedBox(height: 12),
-            Row(
+    return SizedBox(
+      height: sheetH,
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
+        backgroundColor: bg,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _grams,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    style: const TextStyle(fontFamily: 'monospace'),
-                    decoration: const InputDecoration(
-                      labelText: 'Amount (grams)',
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: cyan, width: 2)),
+                  ),
+                  child: const Text(
+                    'RECIPE BUILDER',
+                    style: TextStyle(
+                      color: cyan,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _name,
+                  onChanged: (_) {
+                    if (_nameMissing && _name.text.trim().isNotEmpty) {
+                      setState(() => _nameMissing = false);
+                    }
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Recipe name',
+                    errorText: (_nameMissing && _name.text.trim().isEmpty)
+                        ? 'Please enter a recipe name.'
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  flex: 3,
+                  child: _loadingIngredients
+                      ? const Center(child: LinearProgressIndicator())
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextField(
+                              controller: _ingredientSearchCtrl,
+                              autofocus: false,
+                              onChanged: (_) => setState(() {}),
+                              style: const TextStyle(
+                                color: cyan,
+                                fontFamily: 'monospace',
+                              ),
+                              decoration: InputDecoration(
+                                hintText: loc.recipeIngredientSearchHint,
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFF757575),
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                ),
+                                prefixIcon: const Icon(Icons.search),
+                                suffixIcon: SizedBox(
+                                  width: 100,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: loc.searchClearTooltip,
+                                        onPressed: () {
+                                          _ingredientSearchCtrl.clear();
+                                          setState(() {});
+                                        },
+                                        icon: const Icon(Icons.clear, size: 20),
+                                        color: cyan,
+                                        style: IconButton.styleFrom(
+                                          minimumSize: const Size(40, 40),
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: loc.scanBarcodeTooltip,
+                                        onPressed: _loadingIngredients || _barcodeBusy
+                                            ? null
+                                            : _scanRecipeIngredientBarcode,
+                                        icon: Icon(
+                                          Icons.qr_code_scanner,
+                                          size: 22,
+                                          color: AppColors.cyberGold,
+                                        ),
+                                        style: IconButton.styleFrom(
+                                          minimumSize: const Size(44, 44),
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          padding: const EdgeInsets.all(4),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                enabledBorder: const OutlineInputBorder(
+                                  borderRadius: BorderRadius.zero,
+                                  borderSide:
+                                      BorderSide(color: cyan, width: 1),
+                                ),
+                                focusedBorder: const OutlineInputBorder(
+                                  borderRadius: BorderRadius.zero,
+                                  borderSide:
+                                      BorderSide(color: cyan, width: 1.5),
+                                ),
+                              ),
+                            ),
+                            if (_selectedIngredient != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                '${loc.ingredient}: '
+                                '${(_selectedIngredient!['name'] ?? '').toString()}',
+                                style: const TextStyle(
+                                  color: Color(0xAA00F3FF),
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: _filteredIngredients.isEmpty
+                                  ? Center(
+                                      child: Text(
+                                        loc.noItemsFound,
+                                        style: const TextStyle(
+                                          color: Color(0x8800F3FF),
+                                          fontFamily: 'monospace',
+                                        ),
+                                      ),
+                                    )
+                                  : ListView.separated(
+                                      itemCount: _filteredIngredients.length,
+                                      separatorBuilder: (context, _) => Divider(
+                                        height: 1,
+                                        color: cyan.withValues(alpha: 0.2),
+                                      ),
+                                      itemBuilder: (context, index) {
+                                        final item = _filteredIngredients[index];
+                                        final id = (item['id'] ?? '').toString();
+                                        final selId =
+                                            (_selectedIngredient?['id'] ?? '')
+                                                .toString();
+                                        final selected = id.isNotEmpty &&
+                                            id == selId;
+                                        return ListTile(
+                                          selected: selected,
+                                          selectedTileColor:
+                                              const Color(0x2200F3FF),
+                                          title: Text(
+                                            (item['name'] ?? '').toString(),
+                                            style: const TextStyle(
+                                              color: cyan,
+                                              fontFamily: 'monospace',
+                                              letterSpacing: 0.6,
+                                            ),
+                                          ),
+                                          onTap: () => setState(
+                                            () => _selectedIngredient = item,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                            ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _grams,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        style: const TextStyle(fontFamily: 'monospace'),
+                        decoration: const InputDecoration(
+                          labelText: 'Amount (grams)',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: _addPending,
+                        child: const Text('ADD INGREDIENT'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Builder(
+                  builder: (context) {
+                    final cur = _currentIngredientLineTotals();
+                    final base = _pendingCommittedTotals();
+                    final runP = base.p + cur.p;
+                    final runC = base.c + cur.c;
+                    final runF = base.f + cur.f;
+                    final runCal = base.cal + cur.cal;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _macroPreviewBar(
+                          title: 'Current ingredient total',
+                          macroLine: MacroDisplay.macroLine(
+                            cur.p,
+                            cur.c,
+                            cur.f,
+                            cur.cal,
+                          ),
+                        ),
+                        _macroPreviewBar(
+                          title: 'Recipe total (with this line)',
+                          macroLine: MacroDisplay.macroLine(
+                            runP,
+                            runC,
+                            runF,
+                            runCal,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  flex: 2,
+                  child: ListView.builder(
+                    itemCount: _pendingIngredients.length,
+                    itemBuilder: (context, index) {
+                      final p = _pendingIngredients[index];
+                      final name = (p['ingredient_name'] ?? '').toString();
+                      final grams = (p['amount_grams'] is num)
+                          ? (p['amount_grams'] as num).toDouble()
+                          : double.tryParse(
+                                  (p['amount_grams'] ?? '').toString(),
+                                ) ??
+                                0.0;
+                      return ListTile(
+                        title: Text(
+                          '$name - ${grams.toStringAsFixed(0)}g',
+                          style: const TextStyle(
+                            color: cyan,
+                            fontFamily: 'monospace',
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        trailing: IconButton(
+                          onPressed: () => setState(
+                            () => _pendingIngredients.removeAt(index),
+                          ),
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                        ),
+                      );
+                    },
+                  ),
+                ),
                 SizedBox(
-                  height: 48,
-                  child: OutlinedButton(
-                    onPressed: _addPending,
-                    child: const Text('ADD INGREDIENT'),
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _saveRecipe,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: cyan,
+                      foregroundColor: Colors.black,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
+                      ),
+                      textStyle: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    child: _saving ? const Text('...') : const Text('SAVE RECIPE'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Builder(
-              builder: (context) {
-                final cur = _currentIngredientLineTotals();
-                final base = _pendingCommittedTotals();
-                final runP = base.p + cur.p;
-                final runC = base.c + cur.c;
-                final runF = base.f + cur.f;
-                final runCal = base.cal + cur.cal;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _macroPreviewBar(
-                      title: 'Current ingredient total',
-                      macroLine: MacroDisplay.macroLine(
-                        cur.p,
-                        cur.c,
-                        cur.f,
-                        cur.cal,
-                      ),
-                    ),
-                    _macroPreviewBar(
-                      title: 'Recipe total (with this line)',
-                      macroLine: MacroDisplay.macroLine(
-                        runP,
-                        runC,
-                        runF,
-                        runCal,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.builder(
-                itemCount: _pendingIngredients.length,
-                itemBuilder: (context, index) {
-                  final p = _pendingIngredients[index];
-                  final name = (p['ingredient_name'] ?? '').toString();
-                  final grams = (p['amount_grams'] is num)
-                      ? (p['amount_grams'] as num).toDouble()
-                      : double.tryParse((p['amount_grams'] ?? '').toString()) ?? 0.0;
-                  return ListTile(
-                    title: Text(
-                      '$name - ${grams.toStringAsFixed(0)}g',
-                      style: const TextStyle(
-                        color: cyan,
-                        fontFamily: 'monospace',
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                    trailing: IconButton(
-                      onPressed: () =>
-                          setState(() => _pendingIngredients.removeAt(index)),
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                    ),
-                  );
-                },
-              ),
-            ),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _saveRecipe,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: cyan,
-                  foregroundColor: Colors.black,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
-                  ),
-                  textStyle: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                child: _saving ? const Text('...') : const Text('SAVE RECIPE'),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

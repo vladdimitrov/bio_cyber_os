@@ -7,7 +7,7 @@ import 'features/config/screens/settings_screen.dart';
 import 'features/fuel/screens/fuel_dashboard_screen.dart';
 import 'features/intake/screens/daily_intake_screen.dart';
 import 'features/library/screens/library_screen.dart';
-import 'features/vitals/screens/symptom_log_screen.dart';
+import 'features/vitals/screens/check_in_screen.dart';
 
 class AppShell extends StatefulWidget {
   static final GlobalKey<_AppShellState> _shellKey = GlobalKey<_AppShellState>();
@@ -99,7 +99,7 @@ class _AppShellState extends State<AppShell> {
             focusMedLogId: _medsFocusLogId,
             focusMedDate: _medsFocusDate,
           ),
-          const SymptomLogScreen(),
+          const CheckInScreen(),
           const AnalyticsScreen(),
           const LibraryScreen(),
           const SettingsScreen(),

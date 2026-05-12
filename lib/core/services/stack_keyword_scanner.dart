@@ -1,11 +1,11 @@
-/// Protocol-related keywords scanned from ingredient / label text (case-insensitive).
-class ProtocolKeywordReport {
+/// Stack-related keywords scanned from ingredient / label text (case-insensitive).
+class StackKeywordReport {
   final bool gluten;
   final bool dairy;
   final bool lactose;
   final bool starch;
 
-  const ProtocolKeywordReport({
+  const StackKeywordReport({
     required this.gluten,
     required this.dairy,
     required this.lactose,
@@ -25,9 +25,9 @@ class ProtocolKeywordReport {
   }
 }
 
-ProtocolKeywordReport scanProtocolKeywords(String? raw) {
+StackKeywordReport scanStackKeywords(String? raw) {
   final text = (raw ?? '').toLowerCase();
-  return ProtocolKeywordReport(
+  return StackKeywordReport(
     gluten: text.contains('gluten'),
     dairy: text.contains('dairy'),
     lactose: text.contains('lactose'),
